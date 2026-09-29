@@ -1,0 +1,24 @@
+# --- secrets: never commit these ---
+.env
+.env.*
+!.env.example
+*.key
+*.pem
+secrets/
+
+# --- generated / derived artifacts ---
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+.ruff_cache/
+
+# Story OS run artifacts: regenerable, sometimes large
+projects/*/runs/
+projects/*/.cache/
+*.log
+
+# --- OS noise ---
+.DS_Store
+Thumbs.db
