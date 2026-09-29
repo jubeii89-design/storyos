@@ -56,24 +56,38 @@ tests in the session transcript, not yet extracted into `tests/`. See Limits.
   `vscode://file/<abs>:<line>`. The screen that justifies the project is the
   Prompt Inspector — segment token shares plus a run-to-run prompt diff —
   because every bad chapter is a bad context.
-- **Not Unreal, for the UI.** UE 5.8 has no first-party editable rich-text
-  widget (`RichTextBlock` is display-only, `EditableTextBox` is plain text),
-  UMG does not inherit OS-native text behaviour, clipboard needs a paid
-  marketplace plugin, IME is documented-poor, and the install is ~114 GB. No
-  documented document-editing app has been built in it. A text tool consumes
-  none of what Unreal is good at.
-- **Unreal is right for previz, downstream.** Seam: Story OS emits
-  `projects/<slug>/previz/shot-plan.json` in the schema the Blender pipeline
-  already uses; Unreal consumes it via the Remote Control API (HTTP :30010),
-  which avoids the editor-only-Python problem entirely. Screen direction and
-  the 180-degree line stay in Python and are validated deterministically
-  against exported camera transforms. Unreal renders; it never owns state.
+- **Not Unreal.** UE 5.8 has no first-party editable rich-text widget
+  (`RichTextBlock` is display-only, `EditableTextBox` is plain text), UMG does
+  not inherit OS-native text behaviour, clipboard needs a paid marketplace
+  plugin, IME is documented-poor, and the install is ~114 GB. No documented
+  document-editing application has been built in it. A text tool consumes none
+  of what Unreal is good at.
+- **Story OS is text end to end.** No video, storyboard, camera or previz
+  stage, and no seam to one. An earlier draft of this document proposed
+  exporting a shot plan for a rendering engine; that was scope I invented, and
+  it is removed. The pipeline's output is finished prose.
+- **The chain begins at BRAINSTORM, and that stage is a conversation.** An
+  earlier draft started the chain at outlining, which skipped the stage that
+  matters most. Full chain: BRAINSTORM (dialogue) -> DOSSIER -> OUTLINE ->
+  BEATS -> PROSE -> VERIFY. Brainstorm must interrogate the writer, offer
+  options in small sets rather than one answer, push back on scale creep, and
+  close only once genre, tone, scale, protagonist, cast, worldbuilding,
+  inciting incident and climax are all pinned. The dossier is the artifact
+  that ends it: logline, synopsis, then one-sentence bullets.
+- **A conversational stage breaks the card-board UI.** Batch stages suit a
+  status grid and a run queue; a dialogue does not. The brainstorm screen is a
+  different shape and is being planned as such rather than forced into the
+  board.
 
 ## Limits
 
-- **No runner, no stages, no UI.** Outline/Beats/Prose/Verify are designed and
-  their contracts fixed, but unimplemented. `build_prose_prompt()` has no
-  caller yet.
+- **No runner, no stages, no UI.** Brainstorm/Dossier/Outline/Beats/Prose/Verify
+  are designed and their contracts fixed, but unimplemented.
+  `build_prose_prompt()` has no caller yet.
+- **Brainstorm and Dossier have no prompt builders at all.** `context.py` only
+  has `build_prose_prompt()`. The conversational stage needs a different
+  assembly shape -- turn history plus a running `story.json` of pinned elements
+  -- and it is not written.
 - **No provider subclass exists.** `base.py` defines the interface; the
   Anthropic and OpenAI-compatible implementations are not written, so nothing
   can reach a model. Zero API calls have been made.
