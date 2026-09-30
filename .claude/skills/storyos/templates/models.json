@@ -1,0 +1,149 @@
+{
+  "version": 1,
+
+  "_comment": "Copied into a new project. Keys are NEVER stored here -- key_env names an environment variable. price_in/price_out are per million tokens and you fill them yourself; shipped numbers go stale and a wrong cost display is worse than a blank one.",
+
+  "registry": [
+    {
+      "id": "claude-opus-5-5",
+      "label": "Opus 5.5",
+      "family": "anthropic",
+      "kind": "subagent",
+      "model": "opus",
+      "key_env": null,
+      "roles": ["brainstorm", "draft", "seam", "lineedit", "outline"]
+    },
+    {
+      "id": "claude-opus-5",
+      "label": "Opus 5",
+      "family": "anthropic",
+      "kind": "subagent",
+      "model": "opus",
+      "key_env": null,
+      "roles": ["draft", "seam", "lineedit", "outline", "beats"]
+    },
+    {
+      "id": "claude-sonnet-5-5",
+      "label": "Sonnet 5.5",
+      "family": "anthropic",
+      "kind": "subagent",
+      "model": "sonnet",
+      "key_env": null,
+      "roles": ["draft", "beats", "outline"]
+    },
+    {
+      "id": "claude-haiku-4-5",
+      "label": "Haiku 4.5",
+      "family": "anthropic",
+      "kind": "subagent",
+      "model": "haiku",
+      "key_env": null,
+      "roles": ["delta_extract"]
+    },
+
+    {
+      "id": "ollama-qwen",
+      "label": "Qwen3 14B (local)",
+      "family": "qwen",
+      "kind": "openai_compatible",
+      "base_url": "http://localhost:11434/v1",
+      "model": "qwen3:14b",
+      "key_env": null,
+      "price_in": 0,
+      "price_out": 0,
+      "roles": ["critic"]
+    },
+    {
+      "id": "ollama-mistral",
+      "label": "Mistral Small (local)",
+      "family": "mistral",
+      "kind": "openai_compatible",
+      "base_url": "http://localhost:11434/v1",
+      "model": "mistral-small",
+      "key_env": null,
+      "price_in": 0,
+      "price_out": 0,
+      "roles": ["critic"]
+    },
+    {
+      "id": "ollama-gemma",
+      "label": "Gemma 3 (local)",
+      "family": "google",
+      "kind": "openai_compatible",
+      "base_url": "http://localhost:11434/v1",
+      "model": "gemma3:12b",
+      "key_env": null,
+      "price_in": 0,
+      "price_out": 0,
+      "roles": ["critic"],
+      "enabled": false
+    },
+
+    {
+      "id": "chatgpt-manual",
+      "label": "ChatGPT (paste)",
+      "family": "openai",
+      "kind": "manual",
+      "open_url": "https://chatgpt.com/",
+      "key_env": null,
+      "price_in": 0,
+      "price_out": 0,
+      "roles": ["critic"],
+      "_note": "Uses the ChatGPT subscription you already pay for. The UI copies the review prompt, you paste it in the browser, then paste the JSON back. Every Python guard still runs on the pasted result."
+    },
+    {
+      "id": "openai-frontier",
+      "label": "ChatGPT (API)",
+      "family": "openai",
+      "kind": "openai_compatible",
+      "base_url": "https://api.openai.com/v1",
+      "model": "",
+      "key_env": "OPENAI_API_KEY",
+      "price_in": null,
+      "price_out": null,
+      "roles": ["critic"],
+      "enabled": false,
+      "_note": "SEPARATE PURCHASE from ChatGPT Plus -- the subscription includes no API credits. Set model to the exact id and fill both prices before enabling."
+    },
+    {
+      "id": "gemini-flash",
+      "label": "Gemini Flash",
+      "family": "google",
+      "kind": "openai_compatible",
+      "base_url": "https://generativelanguage.googleapis.com/v1beta/openai",
+      "model": "",
+      "key_env": "GOOGLE_API_KEY",
+      "price_in": null,
+      "price_out": null,
+      "roles": ["critic"],
+      "enabled": false
+    }
+  ],
+
+  "critics": {
+    "slot_a": "ollama-qwen",
+    "slot_b": "chatgpt-manual",
+    "slot_b_policy": "on_contest",
+    "_policy": "always | on_contest. on_contest spends slot B only where slot A and the free Python gate disagree, or the gate flagged heavily -- roughly 10 chapters in 40. Use it when slot B costs money OR costs you a copy-paste."
+  },
+
+  "stages": {
+    "brainstorm":    { "model": "claude-opus-5-5" },
+    "outline":       { "model": "claude-opus-5" },
+    "beats":         { "model": "claude-opus-5" },
+    "draft":         { "model": "claude-sonnet-5-5", "escalate_to": "claude-opus-5", "escalate_after_failures": 2 },
+    "delta_extract": { "model": "claude-haiku-4-5" },
+    "seam":          { "model": "claude-opus-5" },
+    "lineedit":      { "model": "claude-opus-5" }
+  },
+
+  "cover_renderers": [
+    { "id": "typographic", "label": "Typographic", "kind": "none", "cost": "free" },
+    { "id": "local-flux",  "label": "Flux (local ComfyUI)", "kind": "local_diffusion", "cost": "free",
+      "endpoint": "http://127.0.0.1:8188", "vram_gb": 12, "enabled": false },
+    { "id": "nano-banana", "label": "Nano Banana", "kind": "openai_compatible", "cost": "per image",
+      "key_env": "GOOGLE_API_KEY", "enabled": false }
+  ],
+
+  "cover_renderer": "typographic"
+}
