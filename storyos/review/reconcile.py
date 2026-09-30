@@ -49,24 +49,52 @@ class Status(enum.StrEnum):
     UNVERIFIED = "unverified"  # quote not found in the text -- discarded
 
 
-def _normalise(text: str) -> str:
-    """Fold the differences that make an honest quote fail a literal match.
+_DROPPED = frozenset("\"'‘’“”«»")
+_REMAPPED = {"–": "-", "—": "-", "…": "..."}
+
+
+def _fold(text: str) -> tuple[str, list[int]]:
+    """Normalise, and return the map from each folded offset to its origin.
 
     Models routinely restyle quotation marks, dashes and whitespace while
-    quoting accurately. Penalising that would throw away real findings, so
-    normalise both sides before comparing -- but keep the words themselves
-    untouched, because word-level invention is exactly what we are hunting.
+    quoting accurately. Penalising that would throw away real findings, so both
+    sides are folded before comparing -- but the words themselves are untouched,
+    because word-level invention is exactly what we are hunting.
+
+    The index map exists so a match can be reported as a span in the original
+    text. It is returned from the same pass that builds the folded string
+    because the two must agree exactly: an earlier version folded here and in a
+    separate loop, the two disagreed about what a deleted apostrophe leaves
+    behind (nothing, or a space), and every quote containing a contraction --
+    which is most quoted dialogue -- was rejected as fabricated evidence.
     """
-    text = unicodedata.normalize("NFKC", text)
-    for a, b in (("–", "-"), ("—", "-"), ("…", "...")):
-        text = text.replace(a, b)
-    # Quotation marks are the single most commonly restyled character in a
-    # quote -- a reviewer citing a line of dialogue routinely drops the
-    # surrounding marks. Keeping them cost a valid finding in testing, so they
-    # are folded away entirely on both sides. Word-level invention, which is
-    # what this check exists to catch, is untouched by this.
-    text = re.sub(r"[\"'‘’“”«»]", "", text)
-    return re.sub(r"\s+", " ", text).strip().lower()
+    out: list[str] = []
+    index: list[int] = []
+    prev_space = True
+
+    for i, raw in enumerate(text):
+        if raw in _DROPPED:
+            continue          # deleted outright; it leaves no space behind
+        piece = _REMAPPED.get(raw) or unicodedata.normalize("NFKC", raw)
+        if piece.isspace():
+            if not prev_space:
+                out.append(" ")
+                index.append(i)
+                prev_space = True
+            continue
+        for ch in piece.lower():
+            out.append(ch)
+            index.append(i)   # a one-to-many fold points every char at its source
+        prev_space = False
+
+    while out and out[-1] == " ":
+        out.pop()
+        index.pop()
+    return "".join(out), index
+
+
+def _normalise(text: str) -> str:
+    return _fold(text)[0]
 
 
 @dataclasses.dataclass(slots=True)
@@ -74,7 +102,9 @@ class Finding:
     reviewer: str
     kind: str                 # weakest_paragraph | promise_break | continuity_conflict
     quote: str
-    why: str
+    why_it_fails: str
+    reaches_for: str = ""     # the effect the passage was going after
+    works_here: str = ""      # what a revision must not destroy, or "nothing"
     defect_code: str = ""
     para_index: int | None = None
     rewrite_hint: str = ""
@@ -85,6 +115,13 @@ class Finding:
     @property
     def quote_words(self) -> int:
         return len(self.quote.split())
+
+    @property
+    def why(self) -> str:
+        """Display form: the defect, then the intent it was serving."""
+        if not self.reaches_for:
+            return self.why_it_fails
+        return f"{self.why_it_fails} — reaching for: {self.reaches_for}"
 
     def key(self) -> str:
         """What counts as 'the same finding' when two reviewers raise it.
@@ -126,7 +163,92 @@ class Review:
         for f in self.findings:
             if f.quote_words < MIN_QUOTE_WORDS and f.quote.strip().lower() != "absent":
                 bad.append(f"{f.kind} quote too short ({f.quote_words} words, need {MIN_QUOTE_WORDS})")
+        for f in self.weakest:
+            # A reviewer that can name the defect but not the intent behind it
+            # usually did not read the passage, it recognised a shape. The
+            # missing field is the tell, so it is a violation and not a blank.
+            if not f.reaches_for.strip():
+                bad.append(f"weakest finding at para {f.para_index} named no intent")
+            if not f.works_here.strip():
+                bad.append(f"weakest finding at para {f.para_index} left works_here blank "
+                           "-- use the literal 'nothing' if there is none")
         return bad
+
+
+PROPER_NOUN = re.compile(r"\b[A-Z][a-z]{2,}\b")
+_SENT_START = re.compile(r"(?:^|(?<=[.!?;:])\s+|\n\s*)")
+
+# Capitalised mid-sentence but not a name. A short list is enough because
+# sentence-initial capitals -- which are most of the noise -- are excluded by
+# position instead, and a word list can never keep up with those.
+_NOT_ENTITIES = {
+    "The", "This", "That", "These", "Those", "There", "When", "Where", "What",
+    "Which", "While", "After", "Before", "Her", "His", "Their", "They", "She",
+    "But", "And", "For", "Not", "Chapter", "Scene", "Reaching", "Absent",
+}
+
+
+def _sentence_starts(text: str) -> set[int]:
+    return {m.end() for m in _SENT_START.finditer(text)} | {0}
+
+
+def verify_entities(findings: Iterable[Finding], state: dict) -> list[Finding]:
+    """Discard findings that complain about people or places the book lacks.
+
+    A reviewer under quota pressure will occasionally invent a character to
+    object to. The ledger already lists every name in the book, so this is
+    answerable without a model: a name in the reviewer's own prose -- not in the
+    quote, which is the author's -- that the ledger does not know is a
+    fabrication, and the finding resting on it is worthless.
+
+    Known gap: with no lexicon and no NER on this machine, a capitalised token
+    is only convicted when it carries a possessive or appears mid-sentence. An
+    invented name that occurs *only* at the start of a sentence is
+    indistinguishable from an ordinary capitalised opener ("Atmosphere by
+    assertion...") and passes. Quote verification is the guard that carries the
+    weight; this one is a cheap second net, not a seal.
+    """
+    known = {n.lower() for n in _ledger_names(state)}
+    invented: list[Finding] = []
+
+    for f in findings:
+        claim = ". ".join(p for p in (f.why_it_fails, f.reaches_for, f.works_here,
+                                     f.rewrite_hint) if p)
+        starts = _sentence_starts(claim)
+        quote = f.quote.lower()
+
+        for m in PROPER_NOUN.finditer(claim):
+            word = m.group(0)
+            if word in _NOT_ENTITIES or word.lower() in known:
+                continue
+            # A name the author used in the quoted passage is the author's, not
+            # the reviewer's, even if the ledger has not caught up yet.
+            if word.lower() in quote:
+                continue
+            possessive = claim[m.end():m.end() + 2] in ("'s", "’s")
+            if not possessive and m.start() in starts:
+                continue
+            f.status = Status.UNVERIFIED
+            invented.append(f)
+            break
+
+    return invented
+
+
+def _ledger_names(state: dict) -> set[str]:
+    names: set[str] = set()
+    for section in ("characters", "world", "places"):
+        for row in state.get(section, []) or []:
+            if isinstance(row, dict):
+                for field in ("name", "id", "label", "aliases"):
+                    val = row.get(field)
+                    if isinstance(val, str):
+                        names.update(val.split())
+                    elif isinstance(val, list):
+                        for v in val:
+                            if isinstance(v, str):
+                                names.update(v.split())
+    return names
 
 
 def verify_quotes(review: Review, chapter_text: str, *, floor: float = 0.90) -> tuple[list[Finding], list[Finding]]:
@@ -138,23 +260,7 @@ def verify_quotes(review: Review, chapter_text: str, *, floor: float = 0.90) -> 
     it is evidence the reviewer did not read what it claims to have read, and
     the finding built on it is worthless.
     """
-    hay = _normalise(chapter_text)
-    # Map normalised offsets back to the original string.
-    index: list[int] = []
-    buf: list[str] = []
-    prev_space = True
-    for i, ch in enumerate(unicodedata.normalize("NFKC", chapter_text)):
-        folded = _normalise(ch)
-        if not folded:
-            if not prev_space and buf:
-                buf.append(" ")
-                index.append(i)
-                prev_space = True
-            continue
-        buf.append(folded)
-        index.append(i)
-        prev_space = False
-    hay = "".join(buf).strip()
+    hay, index = _fold(chapter_text)
 
     verified: list[Finding] = []
     hallucinated: list[Finding] = []
@@ -181,8 +287,8 @@ def verify_quotes(review: Review, chapter_text: str, *, floor: float = 0.90) -> 
             hallucinated.append(f)
             continue
 
-        end = min(pos + len(needle), len(index) - 1)
-        f.span = (index[pos], index[end])
+        last = min(pos + len(needle), len(index)) - 1
+        f.span = (index[pos], index[last] + 1)   # exclusive end, for slicing
         f.status = Status.CONTESTED       # promoted to CONFIRMED only by agreement
         verified.append(f)
 

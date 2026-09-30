@@ -65,29 +65,38 @@ class EventLog:
         self.emit("run_start", project=project, chapters=chapters, plan=plan)
 
     def stage_start(self, chapter: int, stage: str, model: str, provider: str,
-                    prompt_report: dict) -> None:
+                    prompt_report: dict, part: str = "") -> None:
         """prompt_report is Prompt.report() -- this is what feeds the inspector."""
-        self.emit("stage_start", chapter=chapter, stage=stage, model=model,
+        self.emit("stage_start", chapter=chapter, part=part, stage=stage, model=model,
                   provider=provider, prompt=prompt_report)
 
-    def stage_end(self, chapter: int, stage: str, ok: bool, *, artifact: str | None = None,
+    def stage_end(self, chapter: int, stage: str, ok: bool, *, part: str = "",
+                  artifact: str | None = None,
                   input_tokens: int = 0, output_tokens: int = 0, cost_usd: float = 0.0,
                   latency_s: float = 0.0, truncated: bool = False,
-                  error: str | None = None) -> None:
-        self.emit("stage_end", chapter=chapter, stage=stage, ok=ok, artifact=artifact,
-                  input_tokens=input_tokens, output_tokens=output_tokens,
+                  verdict: str | None = None, error: str | None = None) -> None:
+        """`verdict` carries a review stage's ship/revise/rewrite outcome.
+
+        Without it, `models.json`'s `escalate_after_failures` has nothing to
+        count -- `ok` says the stage ran, not what it concluded, and a review
+        that cleanly returns "rewrite" is a successful stage with a bad verdict.
+        """
+        self.emit("stage_end", chapter=chapter, part=part, stage=stage, ok=ok,
+                  artifact=artifact, input_tokens=input_tokens,
+                  output_tokens=output_tokens,
                   cost_usd=round(cost_usd, 6), latency_s=round(latency_s, 2),
-                  truncated=truncated, error=error)
+                  truncated=truncated, verdict=verdict, error=error)
 
     def finding(self, chapter: int, kind: str, severity: str, message: str,
-                span: tuple[int, int] | None = None, quote: str | None = None) -> None:
+                span: tuple[int, int] | None = None, quote: str | None = None,
+                part: str = "") -> None:
         """A verification hit.
 
         `span` is a character offset pair into the chapter markdown, so the UI
         can highlight it rather than make you hunt. Checks that cannot produce
         offsets must at least return `quote` so the UI can search for it.
         """
-        self.emit("finding", chapter=chapter, kind=kind, severity=severity,
+        self.emit("finding", chapter=chapter, part=part, kind=kind, severity=severity,
                   message=message, span=list(span) if span else None, quote=quote)
 
     def note(self, message: str, **fields) -> None:
@@ -131,18 +140,39 @@ def read_events(path: str | os.PathLike, *, tolerate_partial: bool = True) -> It
                 raise
 
 
-def completed_stages(path: str | os.PathLike) -> set[tuple[int, str]]:
-    """(chapter, stage) pairs that finished successfully -- the resume key.
+def completed_stages(path: str | os.PathLike) -> set[tuple[int, str, str]]:
+    """(chapter, part, stage) triples that finished successfully -- the resume key.
 
     Derived by replaying the log, so there is no second source of truth to
     drift. Re-running a stage that later failed is correct: the last outcome
-    for a pair wins.
+    for a triple wins.
+
+    `part` is "a", "b", or "" for chapter-level and book-level stages. It is in
+    the key because a chapter is drafted in two halves: keyed on chapter alone,
+    finishing 01b would mark 01a complete and the second half would overwrite
+    the first on the next resume.
     """
-    outcome: dict[tuple[int, str], bool] = {}
+    outcome: dict[tuple[int, str, str], bool] = {}
     for ev in read_events(path):
         if ev.get("event") == "stage_end":
-            outcome[(ev["chapter"], ev["stage"])] = bool(ev.get("ok"))
+            key = (ev["chapter"], ev.get("part", ""), ev["stage"])
+            outcome[key] = bool(ev.get("ok"))
     return {k for k, ok in outcome.items() if ok}
+
+
+def review_failures(path: str | os.PathLike, chapter: int) -> int:
+    """How many times this chapter's review returned `rewrite`.
+
+    This is what `models.json`'s `escalate_after_failures` counts. Derived by
+    replay rather than stored, so it survives a crash like everything else.
+    """
+    return sum(
+        1 for ev in read_events(path)
+        if ev.get("event") == "stage_end"
+        and ev.get("stage") == "review"
+        and ev.get("chapter") == chapter
+        and ev.get("verdict") == "rewrite"
+    )
 
 
 def run_totals(path: str | os.PathLike) -> dict:

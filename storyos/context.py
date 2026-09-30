@@ -214,6 +214,9 @@ def build_prose_prompt(
     beats: list[dict],
     prior_chapters: Sequence[str],
     chapter_no: int,
+    part: str = "",
+    half_a_text: str = "",
+    seam_intent: str = "",
     budget_tokens: int = 60_000,
     tail_words: int = 1500,
 ) -> Prompt:
@@ -244,14 +247,36 @@ def build_prose_prompt(
     p.user_json(f"Beats to dramatise for chapter {chapter_no}", beats,
                 source=f"beats/ch{chapter_no:02d}.json", priority=95)
 
-    if prior_chapters:
+    if seam_intent:
+        p.user("What must be true at the handoff", seam_intent,
+               fidelity=Fidelity.RULES, source=f"beats/ch{chapter_no:02d}.json#seam_intent",
+               priority=97)
+
+    if part == "b" and half_a_text:
+        # Whole, never summarised, and above every ledger row. A half drafted
+        # without its own first half in front of it re-establishes the setting
+        # and repeats gestures -- the four defects `checks/seam.py` exists to
+        # catch. Paying ~2,300 tokens here is how the join stops being a repair
+        # job. If the budget cannot hold this, the budget is wrong.
+        p.user(
+            f"The first half of this very scene (verbatim) -- you are continuing it mid-scene",
+            half_a_text,
+            fidelity=Fidelity.VERBATIM,
+            source=f"chapters/parts/ch{chapter_no:02d}a.md",
+            priority=99,
+        )
+    elif prior_chapters:
         tail, got = verbatim_tail(prior_chapters, tail_words)
         p.user(
             f"Immediately preceding prose (verbatim, {got} words) -- continue from this voice",
             tail,
             fidelity=Fidelity.VERBATIM,
             source=f"chapters/ch{chapter_no - 1:02d}.md",
-            priority=70,
+            # Above the ledger rows, not below them. Voice is the thing this
+            # segment carries and nothing else can supply it; a character row
+            # dropped from the prompt costs one fact, and the fact is recoverable
+            # at the verify stage. Dropped voice costs the chapter.
+            priority=92,
         )
 
     return p.fit(budget_tokens)

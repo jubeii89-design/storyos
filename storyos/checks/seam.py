@@ -1,0 +1,194 @@
+"""Detect the four defects two independently drafted half-chapters produce at
+their join: phrasing repeated across the boundary, a second opening that
+re-establishes what the first already established, the same distinctive gesture
+in both halves, and a first half that lands an ending it was not supposed to
+reach. All four are answerable without a model, so no model is asked.
+"""
+
+from __future__ import annotations
+
+import re
+from dataclasses import dataclass
+from difflib import SequenceMatcher
+from pathlib import Path
+from sys import argv, exit
+
+NGRAM = 4
+MIN_CONTENT_WORDS = 2      # per n-gram, before it counts as repeated phrasing
+SETTING_FLOOR = 0.55
+
+
+@dataclass(frozen=True)
+class Finding:
+    code: str
+    severity: str            # "error" blocks the join; "warn" is a craft note
+    message: str
+    evidence: str
+    a_span: tuple[int, int] | None
+    b_span: tuple[int, int] | None
+
+
+STOPWORDS = {
+    "a", "an", "and", "are", "as", "at", "be", "been", "being", "but", "by",
+    "can", "could", "did", "do", "does", "for", "from", "had", "has", "have",
+    "he", "her", "hers", "him", "his", "i", "if", "in", "into", "is", "it",
+    "its", "may", "me", "might", "must", "my", "not", "of", "on", "one", "or",
+    "our", "out", "she", "should", "so", "than", "that", "the", "their",
+    "them", "then", "there", "these", "they", "this", "those", "to", "up",
+    "us", "was", "we", "were", "what", "when", "which", "who", "will", "with",
+    "would", "you", "your", "all", "any", "both", "each", "every", "very",
+    "over", "just", "only", "still", "like", "back", "down", "away", "again",
+}
+
+# Deliberately excludes turned, looked, reached, stepped, hands, breath,
+# smiled and glanced. Those are among the most common words in English prose;
+# flagging them would fire on every chapter and teach the writer to ignore
+# this check. What is left is distinctive enough that seeing it twice within
+# 600 words is a genuine tell.
+GESTURES = {
+    "nodded", "shrugged", "exhaled", "inhaled", "swallowed", "frowned",
+    "sighed", "blinked", "winced", "flinched", "grimaced", "shivered",
+    "trembled", "clenched", "unclenched", "tightened", "loosened", "gripped",
+    "jaw", "shoulders", "knuckles", "throat", "spine", "temples", "eyebrow",
+}
+
+# Each must be unambiguous closure. Bare "finally", "was over" and "had
+# passed" were removed: they match ordinary mid-scene sentences ("an hour had
+# passed", "the argument was over the money") and drowned the real hits.
+CLOSURES = [
+    "for the first time", "for the last time", "at last", "it was over",
+    "it was done", "it was finished", "nothing would be the same",
+    "would never be the same", "there was no going back", "the die was cast",
+    "and that was that", "and with that", "had come to an end", "never again",
+    "finally understood", "finally knew", "finally saw", "nothing left to say",
+]
+CLOSURE_RE = [(m, re.compile(r"\b" + re.escape(m) + r"\b", re.I)) for m in CLOSURES]
+
+WORD_RE = re.compile(r"[A-Za-z][A-Za-z']*")
+# Sentence break after terminal punctuation, allowing a closing quote or
+# bracket to sit between the punctuation and the space.
+SENT_RE = re.compile(r'(?<=[.!?])["\'’”)\]]*\s+')
+
+
+def _tokens(text: str) -> list[tuple[str, int, int]]:
+    return [(m.group(0).lower(), m.start(), m.end()) for m in WORD_RE.finditer(text)]
+
+
+def _is_content(word: str) -> bool:
+    return len(word) >= 4 and word not in STOPWORDS
+
+
+def _sentences(text: str) -> list[str]:
+    return [s.strip() for s in SENT_RE.split(text.strip()) if s.strip()]
+
+
+def _strip(word: str) -> str:
+    return word.lower().strip(".,!?;:—-\"'‘’“”")
+
+
+def check_seam(half_a: str, half_b: str, *, window_words: int = 300) -> list[Finding]:
+    findings: list[Finding] = []
+
+    tok_a = _tokens(half_a)
+    tok_b = _tokens(half_b)
+    a_win = tok_a[max(0, len(tok_a) - window_words):]
+    b_win = tok_b[:window_words]
+
+    # 1. Repeated phrasing across the boundary.
+    b_index: dict[tuple[str, ...], tuple[int, int]] = {}
+    for i in range(len(b_win) - NGRAM + 1):
+        run = b_win[i:i + NGRAM]
+        b_index.setdefault(tuple(w for w, _, _ in run), (run[0][1], run[-1][2]))
+
+    hits: list[tuple[tuple[int, int], tuple[int, int]]] = []
+    for i in range(len(a_win) - NGRAM + 1):
+        run = a_win[i:i + NGRAM]
+        key = tuple(w for w, _, _ in run)
+        if sum(_is_content(w) for w in key) < MIN_CONTENT_WORDS:
+            continue
+        hit = b_index.get(key)
+        if hit is not None:
+            hits.append(((run[0][1], run[-1][2]), hit))
+
+    # A duplicated passage produces one hit per sliding window, so reporting
+    # them raw turns a single defect into thirty findings and buries the other
+    # three checks. Merge hits that overlap on both sides into the one run of
+    # repeated text they actually describe.
+    runs: list[tuple[tuple[int, int], tuple[int, int]]] = []
+    for a_sp, b_sp in sorted(hits):
+        if runs and a_sp[0] <= runs[-1][0][1] and b_sp[0] <= runs[-1][1][1]:
+            pa, pb = runs[-1]
+            runs[-1] = ((pa[0], max(pa[1], a_sp[1])), (pb[0], max(pb[1], b_sp[1])))
+        else:
+            runs.append((a_sp, b_sp))
+
+    for a_sp, b_sp in runs:
+        text = half_a[a_sp[0]:a_sp[1]]
+        words = len(text.split())
+        # One short shared phrase across 600 words is coincidence. A long run,
+        # or more than one run, is the second half reusing the first half's
+        # sentences, and the join will read as a stutter.
+        severe = words >= 8 or len(runs) >= 2
+        findings.append(Finding(
+            "repeat_ngram", "error" if severe else "warn",
+            f"{words} words of phrasing repeated across the join",
+            text if words <= 14 else " ".join(text.split()[:12]) + " …",
+            a_sp, b_sp,
+        ))
+
+    # 2. The second half opening the way the first half opened.
+    sent_a, sent_b = _sentences(half_a)[:5], _sentences(half_b)[:3]
+    for bs in sent_b:
+        best = max(
+            ((SequenceMatcher(None, a.lower(), bs.lower()).ratio(), a) for a in sent_a),
+            default=(0.0, ""),
+        )
+        if best[0] >= SETTING_FLOOR:
+            at = half_a.find(best[1])
+            bt = half_b.find(bs)
+            findings.append(Finding(
+                "restated_setting", "error",
+                f"opening re-establishes the first half's opening ({best[0]:.0%})",
+                bs[:80], (at, at + len(best[1])) if at >= 0 else None,
+                (bt, bt + len(bs)) if bt >= 0 else None,
+            ))
+
+    # 3. The same distinctive gesture on both sides of the join.
+    b_gest = {w: (s, e) for w, s, e in b_win if _strip(w) in GESTURES}
+    done: set[str] = set()
+    for w, s, e in a_win:
+        g = _strip(w)
+        if g in GESTURES and g not in done and g in b_gest:
+            done.add(g)
+            findings.append(Finding(
+                "repeat_gesture", "warn", "same gesture on both sides of the join",
+                g, (s, e), b_gest[g],
+            ))
+
+    # 4. A first half that resolved instead of handing over.
+    tail = _sentences(half_a)[-2:]
+    for sent in tail:
+        for marker, rx in CLOSURE_RE:
+            if rx.search(sent):
+                at = half_a.find(sent)
+                findings.append(Finding(
+                    "false_ending", "warn",
+                    "first half closes as a resolution, not a mid-scene break",
+                    marker, (at, at + len(sent)) if at >= 0 else None, None,
+                ))
+                break
+
+    return findings
+
+
+if __name__ == "__main__":
+    if len(argv) != 3:
+        print("usage: seam.py <half_a.md> <half_b.md>")
+        exit(2)
+
+    found = check_seam(Path(argv[1]).read_text(), Path(argv[2]).read_text())
+    for f in found:
+        print(f"{f.severity.upper():<5}  {f.code:<17}  {f.message}  — {f.evidence!r}")
+    if not found:
+        print("clean")
+    exit(1 if any(f.severity == "error" for f in found) else 0)
