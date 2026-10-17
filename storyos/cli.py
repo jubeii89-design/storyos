@@ -18,7 +18,7 @@ import sys
 from pathlib import Path
 
 from . import stages, units
-from .events import completed_all, review_failures, run_totals
+from .events import completed_all, new_run_id, review_failures, run_totals
 from .paths import Env, EnvNotFound
 from .project import DEFAULT_CHAPTERS, init_env
 
@@ -129,8 +129,26 @@ def cmd_next(args) -> int:
     return 0
 
 
+FREE_STAGES = {
+    "style_card":     lambda env, unit, run: _style(env),
+    "split_beats":    lambda env, unit, run: _beats(env, unit),
+    "context_pack":   lambda env, unit, run: _pack(env, unit, run),
+    "length_gate":    lambda env, unit, run: _length(env, unit),
+    "join":           lambda env, unit, run: _join(env, unit),
+    "seam_verify":    lambda env, unit, run: _seam_verify(env, unit),
+    "state_rebuild":  lambda env, unit, run: _state(env),
+    "chapter_commit": lambda env, unit, run: _commit(env, unit),
+}
+
+
 def cmd_stage(args) -> int:
     st = stages.get(args.stage)
+    env = _env(args)
+
+    if st.human:
+        sys.exit(f"{c('yours', AMBER)}: {st.name} is not run by a command. "
+                 f"Open and write:\n  {env.premise}")
+
     if st.model:
         unit = args.unit or ""
         sys.exit(
@@ -138,10 +156,117 @@ def cmd_stage(args) -> int:
             f"the Claude Code skill rather than this command.\n"
             f"  Run:  /storyos {st.name} {unit}".rstrip()
         )
-    sys.exit(
-        f"{c('not built yet', AMBER)}: {st.name} is a free Python stage and its "
-        f"implementation is still to come.\n  It will write: {st.writes}"
-    )
+
+    fn = FREE_STAGES.get(st.name)
+    if fn is None:
+        sys.exit(f"{c('not built yet', AMBER)}: {st.name} is free but unimplemented.\n"
+                 f"  It will write: {st.writes}")
+
+    if st.scope in ("half", "chapter") and not args.unit:
+        sys.exit(f"{c('error', RED)}: {st.name} needs a unit, e.g. "
+                 f"`storyos stage {st.name} "
+                 f"{'07a' if st.scope == 'half' else '07'}`")
+
+    run_id = env.latest_run() or new_run_id()
+    try:
+        result = fn(env, args.unit, run_id)
+    except (FileNotFoundError, ValueError, units.BadUnit) as x:
+        sys.exit(f"{c('failed', RED)}: {x}")
+
+    # A stage may return a plain list (succeeded) or (lines, ok). A check that
+    # reports a violation must exit nonzero: printing "ok" above a violation
+    # and returning 0 is how a broken gate gets ignored in a script.
+    ok = True
+    if isinstance(result, tuple):
+        result, ok = result
+
+    print(f"{c('ok' if ok else 'FAILED', GREEN if ok else RED)} "
+          f"{st.name} {args.unit or ''}".rstrip())
+    for line in result:
+        print(f"  {line}")
+    return 0 if ok else 1
+
+
+def _style(env):
+    from .style import run
+    card = run(env, force=True)
+    src = card["source"]
+    if not src["measured"]:
+        return [c("neutral card written — comps/ is empty", AMBER),
+                "prose drafted against this will be competent and anonymous",
+                f"put 2,000+ words of your own prose in {env.comps_dir}"]
+    out = [f"measured {card['words']:,} words from {len(src['files'])} file(s)",
+           f"sentences: mean {card['sentence_len']['mean']}, "
+           f"stdev {card['sentence_len']['stdev']}, p90 {card['sentence_len']['p90']}",
+           f"dialogue {card['dialogue']['pct_of_words']}% of words · "
+           f"adverbs {card['habits']['adverbs_per_1k']}/1k · "
+           f"semicolons {card['habits']['semicolons_per_1k']}/1k"]
+    if not src["sufficient"]:
+        out.append(c(src["warning"], AMBER))
+    return out
+
+
+def _beats(env, unit):
+    from .beats import run
+    r = run(env, unit)
+    return [f"half a: {r['a']['beats']} beats (weight {r['a']['weight']})",
+            f"half b: {r['b']['beats']} beats (weight {r['b']['weight']})",
+            f"handoff: {r['seam_intent']}"]
+
+
+def _pack(env, unit, run_id):
+    from .pack import run
+    rep = run(env, unit, run_id)
+    lines = [f"{len(rep['segments'])} segments, {rep['total_tokens']:,} tokens"]
+    for s in sorted(rep["segments"], key=lambda s: -s["priority"]):
+        lines.append(f"  prio {s['priority']:>3}  {s['tokens']:>6,} tok  {s['label'][:54]}")
+    if rep.get("dropped"):
+        lines.append(c(f"dropped {len(rep['dropped'])} segment(s) to fit", AMBER))
+    return lines
+
+
+def _length(env, unit):
+    from .checks.length import run
+    r = run(env, unit)
+    lines = [f"{r['words']:,} words — {r['verdict']}"]
+    if not r["ok"]:
+        lines.append(f"outside the hard band {r['hard'][0]:,}-{r['hard'][1]:,}; redraft")
+    return lines, r["ok"]
+
+
+def _join(env, unit):
+    from .join import run
+    s = run(env, unit)
+    return [f"seam at paragraph {s['seam_paragraph']} (offset {s['seam_offset']:,})",
+            f"editable window: paragraphs {s['window']['first_paragraph']}"
+            f"-{s['window']['last_paragraph']}",
+            f"{s['words']['total']:,} words, {len(s['paragraphs'])} paragraphs hashed"]
+
+
+def _seam_verify(env, unit):
+    from .join import verify
+    v = verify(env, unit)
+    if not v:
+        return ["clean — the repair stayed inside its window"], True
+    return ([f"{len(v)} violation(s) — the repair must be redone"] +
+            [f"  {x['kind']} para {x['paragraph']}: {x['detail']}" for x in v]), False
+
+
+def _state(env):
+    from .state import rebuild
+    s = rebuild(env)
+    return [f"{len(s['characters'])} characters, {len(s['world'])} world rows, "
+            f"{len(s['places'])} places",
+            f"provisional: {sum(1 for g in s.values() for r in g if r.get('provisional'))}"]
+
+
+def _commit(env, unit):
+    from .commit import run
+    r = run(env, unit)
+    return [f"committed from {r['from']} — {r['words']:,} words",
+            f"manuscript: {r['chapters_in_manuscript']} chapter(s), "
+            f"{r['manuscript_words']:,} words",
+            f"ledger: {r['ledger_rows']} rows"]
 
 
 def cmd_doctor(args) -> int:
