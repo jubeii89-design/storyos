@@ -1,0 +1,24 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "storyos"
+version = "0.1.0"
+description = "Premise to manuscript in half-chapter units, driven as a Claude Code skill"
+requires-python = ">=3.11"
+# No runtime dependencies. Every check that gates a draft is stdlib, so the
+# pipeline cannot be broken by an upstream release. Export needs pypandoc-binary
+# and library ingestion needs a few parsers; both are extras, installed when
+# those stages are reached rather than to run the drafting loop.
+dependencies = []
+
+[project.optional-dependencies]
+export = ["pypandoc-binary>=1.13"]
+library = ["pypdf>=4", "python-docx>=1.1", "trafilatura>=1.8", "markdownify>=0.12"]
+
+[project.scripts]
+storyos = "storyos.cli:main"
+
+[tool.setuptools]
+packages = ["storyos", "storyos.checks", "storyos.review", "storyos.providers"]

@@ -17,7 +17,7 @@ can answer will guess, and its guess will be plausible.
 | 3 | `brainstorm` | `premise.md`, `genre.json` | `brainstorm.md` — conversational, multi-turn | yes |
 | 4 | `dossier` | `brainstorm.md` | `dossier.md` | yes |
 | 5 | `bible` | `dossier.md` | `state.json` (`#world`, `#characters` seeded) | yes |
-| 6 | `style_card` | `comps/*.txt`, the user's own prose | `style.json` — measured, not described | yes |
+| 6 | `style_card` | `comps/*.txt`, your own prose | `style.json` — measured, not described | **no** |
 | 7 | `outline` | `dossier.md`, `state.json`, `genre.json` | `outline.json`, 40 entries | yes |
 
 `style.json` holds numbers taken from the user's own writing — sentence length

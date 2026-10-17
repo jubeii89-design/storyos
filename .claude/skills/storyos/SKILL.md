@@ -46,7 +46,7 @@ Read `reference/stages.md` for the full file contract. Summary:
 | `gate0` | **no — Python** | findings in `events.jsonl` |
 | `join` | yes, narrow | `chapters/<ch>.md` |
 | `review` | yes, two models | reconciliation in `events.jsonl` |
-| `lineedit` | yes | `chapters/<ch>.md` (revised) |
+| `revise` | yes | `chapters/<ch>.md` (revised) |
 | `cover` | delegated skill | `cover/front.pdf`, `cover/back.pdf` |
 | `export` | **no — pandoc** | `export/manuscript.docx`, `.pdf` |
 
@@ -123,7 +123,7 @@ Each weakest-paragraph finding carries three fields, not one:
 - `what_works_here` — the part that should survive a revision, or the literal
   string `nothing` if there genuinely is none.
 
-This is not softening. It is what makes `lineedit` usable: a finding that says
+This is not softening. It is what makes `revise` usable: a finding that says
 only "this is flat" licenses the editor to replace the passage with something
 that loses whatever the writer was actually doing. It is also a hallucination
 guard, because a reviewer that invented the defect cannot describe the intent
@@ -165,4 +165,4 @@ For unattended runs the user starts `/loop 3m /storyos drain`.
 
 - `reference/stages.md` — the file contract for every stage
 - `reference/genres.md` — the genre contracts and what each one obliges
-- `reference/craft.md` — the prose standards applied at `lineedit`
+- `reference/craft.md` — the prose standards applied at `revise`

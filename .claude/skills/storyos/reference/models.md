@@ -120,7 +120,7 @@ catches.
                      "escalate_after_failures": 2 },
   "delta_extract": { "model": "claude-haiku-4-5" },
   "seam":          { "model": "claude-opus-5" },
-  "lineedit":      { "model": "claude-opus-5" }
+  "revise":      { "model": "claude-opus-5" }
 }
 ```
 
@@ -128,7 +128,7 @@ Escalate on failure, never by default. Drafting is 80 of the ~320 model calls
 and it is also where model quality shows most, so a flat downgrade there buys
 limit headroom at the price of the actual book. Instead the drafter runs on
 Sonnet and a chapter that fails review twice is redrafted on Opus. `seam` and
-`lineedit` stay on Opus at full price because they are 40 calls each against a
+`revise` stay on Opus at full price because they are 40 calls each against a
 600-word window — the highest craft sensitivity per token anywhere in the
 pipeline.
 

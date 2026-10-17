@@ -308,7 +308,7 @@ def _fallback_models() -> dict:
         "registry": [
             {"id": "claude-opus-5", "label": "Opus 5", "family": "anthropic",
              "kind": "subagent", "model": "opus",
-             "roles": ["brainstorm", "outline", "beats", "draft", "seam", "lineedit"]},
+             "roles": ["brainstorm", "outline", "beats", "draft", "seam", "revise"]},
             {"id": "claude-sonnet-5-5", "label": "Sonnet 5.5", "family": "anthropic",
              "kind": "subagent", "model": "sonnet", "roles": ["draft", "beats", "outline"]},
             {"id": "claude-haiku-4-5", "label": "Haiku 4.5", "family": "anthropic",
@@ -324,14 +324,17 @@ def _fallback_models() -> dict:
         "critics": {"slot_a": "ollama-qwen", "slot_b": "chatgpt-manual",
                     "slot_b_policy": "on_contest"},
         "stages": {
+            "genre": {"model": "claude-opus-5"},
             "brainstorm": {"model": "claude-opus-5"},
+            "dossier": {"model": "claude-opus-5"},
+            "bible": {"model": "claude-opus-5"},
             "outline": {"model": "claude-opus-5"},
             "beats": {"model": "claude-opus-5"},
             "draft": {"model": "claude-sonnet-5-5", "escalate_to": "claude-opus-5",
                       "escalate_after_failures": 2},
             "delta_extract": {"model": "claude-haiku-4-5"},
             "seam": {"model": "claude-opus-5"},
-            "lineedit": {"model": "claude-opus-5"},
+            "revise": {"model": "claude-opus-5"},
         },
         "cover_renderer": "typographic",
     }
