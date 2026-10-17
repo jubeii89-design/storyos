@@ -16,6 +16,8 @@ from sys import argv, exit
 NGRAM = 4
 MIN_CONTENT_WORDS = 2      # per n-gram, before it counts as repeated phrasing
 SETTING_FLOOR = 0.55
+MIN_SETTING_WORDS = 6      # below this, two sentences are similar by accident
+NEAR_IDENTICAL = 0.93      # so a short line must be all but repeated verbatim
 
 
 @dataclass(frozen=True)
@@ -137,13 +139,22 @@ def check_seam(half_a: str, half_b: str, *, window_words: int = 300) -> list[Fin
         ))
 
     # 2. The second half opening the way the first half opened.
+    #
+    # Short sentences are compared on a stricter floor. SequenceMatcher gives
+    # spuriously high ratios on short strings -- '"No," he said.' scored 65%
+    # against '"I logged a mass."', which is two unrelated lines of dialogue
+    # sharing quotes, a comma and a full stop. At that rate the check fires on
+    # clean prose and gets switched off, so a short line must be nearly
+    # identical before it counts as a restatement.
     sent_a, sent_b = _sentences(half_a)[:5], _sentences(half_b)[:3]
     for bs in sent_b:
         best = max(
             ((SequenceMatcher(None, a.lower(), bs.lower()).ratio(), a) for a in sent_a),
             default=(0.0, ""),
         )
-        if best[0] >= SETTING_FLOOR:
+        short = min(len(bs.split()), len(best[1].split())) < MIN_SETTING_WORDS
+        floor = NEAR_IDENTICAL if short else SETTING_FLOOR
+        if best[0] >= floor:
             at = half_a.find(best[1])
             bt = half_b.find(bs)
             findings.append(Finding(
