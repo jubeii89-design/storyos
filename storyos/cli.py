@@ -475,12 +475,134 @@ def build_parser() -> argparse.ArgumentParser:
     d = sub.add_parser("doctor", help="what is reachable, and which bench rules hold")
     d.set_defaults(fn=cmd_doctor)
 
+    cn = sub.add_parser("connect", help="sign in to an outside service")
+    cn.add_argument("service", choices=["google"])
+    cn.add_argument("--again", action="store_true", help="sign in again, as someone else")
+    cn.add_argument("--forget", action="store_true", help="sign out and delete the token")
+    cn.add_argument("--no-browser", action="store_true", help="print the URL instead")
+    cn.set_defaults(fn=cmd_connect)
+
+    lb = sub.add_parser("library", help="craft knowledge the system can read and pin")
+    lb.add_argument("action", choices=["add", "list", "search"])
+    lb.add_argument("target", nargs="?", help="a file, a URL, or a Google Doc link")
+    lb.add_argument("--google", action="store_true", help="treat target as a Google Doc id")
+    lb.set_defaults(fn=cmd_library)
+
     u = sub.add_parser("ui", help="serve the local page (reads and writes files only)")
     u.add_argument("--port", type=int, default=8730)
     u.add_argument("--open", action="store_true", help="open a browser")
     u.set_defaults(fn=cmd_ui)
 
     return p
+
+
+def cmd_connect(args) -> int:
+    from .sources import google
+    env = _env(args)
+    if args.service != "google":
+        sys.exit(f"{c('error', RED)}: unknown service {args.service!r}. Known: google")
+
+    if args.forget:
+        gone = google.forget(env)
+        print(c("signed out", GREEN) if gone else "was not signed in")
+        print("  Story OS no longer holds a token. To revoke its access at "
+              "Google's end:\n  https://myaccount.google.com/permissions")
+        return 0
+
+    st = google.status(env)
+    if st["connected"] and not args.again:
+        print(f"{c('already signed in', GREEN)} to Google")
+        print(f"  scopes: {', '.join(s.rsplit('/', 1)[-1] for s in st['scopes'])}")
+        print(f"  run with --again to sign in as someone else")
+        return 0
+
+    try:
+        google.connect(env, open_browser=not args.no_browser)
+    except google.SetupNeeded as x:
+        print(x)
+        return 1
+    except (RuntimeError, TimeoutError) as x:
+        sys.exit(f"{c('failed', RED)}: {x}")
+
+    print(f"\n{c('connected', GREEN)} — Story OS can now read Google Docs you import.")
+    print(f"  the token is stored in {env.root / '.google-token.json'} (owner-only)")
+    print(f"  import one with:  storyos library add <paste the doc URL>")
+    return 0
+
+
+def cmd_library(args) -> int:
+    from . import library
+    from .sources import files, google
+    env = _env(args)
+
+    if args.action == "list":
+        rows = library.notes(env)
+        if not rows:
+            print("the library is empty")
+            print("  add craft knowledge with: storyos library add <file|url|google-doc>")
+            return 0
+        for r in rows:
+            print(f"  {r['words']:>6,}w  {r['source']:<10} {r['title'][:52]}")
+        print(f"\n  {len(rows)} note(s) in {env.library_notes}")
+        stale = library.stale_pins(env)
+        if stale:
+            print(c(f"  {len(stale)} pin(s) now stale — the note changed after pinning", AMBER))
+        return 0
+
+    if args.action == "search":
+        if not args.target:
+            sys.exit("usage: storyos library search <text>")
+        hits = 0
+        for r in library.notes(env):
+            raw = (env.root / r["path"]).read_text(errors="replace")
+            body = library.body_of(raw)
+            low = body.lower()
+            at = low.find(args.target.lower())
+            if at >= 0:
+                hits += 1
+                a, b = max(0, at - 70), min(len(body), at + 90)
+                print(f"  {c(r['title'][:46], BOLD)}  {r['path']}")
+                print(f"    …{body[a:b].replace(chr(10), ' ').strip()}…")
+        print(f"\n  {hits} note(s) matched" if hits else "  no matches")
+        return 0
+
+    # add
+    src = args.target
+    if not src:
+        sys.exit("usage: storyos library add <file path | url | google doc url>")
+
+    try:
+        if "docs.google.com" in src or (args.google and src):
+            st = google.status(env)
+            if not st["connected"]:
+                print(c("not signed in to Google", AMBER))
+                print("  Story OS needs your permission to read the document.")
+                print("  Run:  storyos connect google")
+                return 1
+            doc = google.fetch(env, src)
+            path = library.add(env, doc["text"], title=doc["name"],
+                               source="google-docs", source_id=doc["id"],
+                               modified=doc.get("modified", ""),
+                               fmt=doc["exported_as"].rsplit("/", 1)[-1])
+            fmt = doc["exported_as"]
+        elif files.is_url(src):
+            md, title, fmt = files.fetch_url(src)
+            path = library.add(env, md, title=title, source="web", source_id=src, fmt=fmt)
+        else:
+            md, title, fmt = files.read(src)
+            path = library.add(env, md, title=title, source=fmt,
+                               source_id=str(Path(src).resolve()), fmt=fmt)
+    except google.NotConnected as x:
+        print(c("Google says no", AMBER)); print(f"  {x}")
+        print("  Run:  storyos connect google")
+        return 1
+    except (files.Unsupported, FileNotFoundError, ValueError, RuntimeError) as x:
+        sys.exit(f"{c('failed', RED)}: {x}")
+
+    words = len(path.read_text().split())
+    print(f"{c('added', GREEN)} {path.name}")
+    print(f"  {words:,} words · from {fmt} · {path}")
+    return 0
 
 
 def cmd_ui(args) -> int:

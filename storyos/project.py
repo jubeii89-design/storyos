@@ -28,10 +28,11 @@ DIRS = (
 )
 
 GITIGNORE = """\
-# Keys. Never committed, never relocated -- rotate instead.
+# Keys and live credentials. Never committed, never relocated -- rotate.
 .env
 *.key
 *.pem
+.google-token.json
 
 # Derived. Rebuilt from deltas/ and chapters/, safe to delete.
 state.json
