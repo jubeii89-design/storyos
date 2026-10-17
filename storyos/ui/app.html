@@ -628,15 +628,189 @@ async function decide(chapter, index, accepted) {
 }
 
 async function viewLibrary(v, ctx) {
-  head("Library", "craft knowledge you can pin into a draft");
-  v.appendChild(el("p","empty",
-    "Notes live in library/notes/ as Markdown. Drop essays, lectures and craft books " +
-    "there — or convert a web page to Markdown and save it there — and they become " +
-    "searchable from the field above and pinnable into a drafting context. " +
-    "Ingestion from PDF, DOCX and Google Docs is not built yet; Markdown and plain " +
-    "text work today."));
+  const d = await api("/api/library");
+  const g = await api("/api/google/status").catch(() => ({connected:false, ready_to_connect:false}));
+  head("Library", `${d.notes.length} note(s) · ${d.index.words ? d.index.words.toLocaleString()+" words indexed" : "not indexed"}`);
+
+  // --- add a source ---
+  const add = el("div","card"); add.style.marginBottom = "16px";
+  add.innerHTML = `<div class="seclabel">ADD TO THE LIBRARY</div>`;
+  const row = el("div"); row.style.cssText = "display:flex;gap:7px;margin-top:6px";
+  const inp = el("input"); inp.type = "url"; inp.placeholder =
+    "paste a web page URL, or a Google Doc link";
+  inp.style.cssText = "flex:1;padding:7px 9px;border:1px solid var(--rule);border-radius:6px;background:var(--panel)";
+  const go = el("button","btn primary","Add");
+  go.onclick = async () => {
+    const src = inp.value.trim(); if (!src) return;
+    go.disabled = true; go.textContent = "fetching…";
+    try {
+      const r = await api("/api/library/add", {method:"POST",
+        headers:{"Content-Type":"application/json"}, body: JSON.stringify({source:src})});
+      inp.value = ""; drawView();
+      void r;
+    } catch (x) {
+      alert(x.error || x.message);
+      go.disabled = false; go.textContent = "Add";
+    }
+  };
+  row.append(inp, go); add.appendChild(row);
+  add.appendChild(el("div","kv",
+    "A web page is also saved as a PDF of what was read, because a URL is not an " +
+    "archive. Local PDFs and DOCX go through: storyos library add <path>"));
+  v.appendChild(add);
+
+  // --- notes ---
+  if (!d.notes.length) {
+    v.appendChild(el("p","empty",
+      "Nothing in the library yet. Add essays, lectures and craft books; they become " +
+      "searchable from the field above and pinnable into a drafting context."));
+  } else {
+    const t = el("table");
+    t.innerHTML = "<thead><tr><th>title</th><th>from</th><th>kept</th><th>words</th></tr></thead>";
+    const b = el("tbody");
+    for (const n of d.notes) {
+      const tr = el("tr"); tr.style.cursor = "pointer";
+      const kept = (n.original||"").endsWith(".pdf") ? `<span class="chip done">PDF</span>`
+                 : n.original ? `<span class="chip todo">original</span>`
+                 : `<span class="chip todo">md only</span>`;
+      tr.innerHTML = `<td><b>${esc(n.title)}</b></td><td style="color:var(--muted)">${esc(n.source)}</td>` +
+        `<td>${kept}</td><td class="mono">${n.words.toLocaleString()}</td>`;
+      tr.onclick = () => openNote(n, v, ctx);
+      b.appendChild(tr);
+    }
+    t.appendChild(b); v.appendChild(t);
+  }
+
+  // --- context: google + pins ---
+  ctx.appendChild(el("div","seclabel","GOOGLE DOCS"));
+  const gc = el("div","card");
+  if (g.connected) {
+    gc.innerHTML = `<span class="chip done">signed in</span>
+      <div class="kv">Paste a Doc link above, or search your Docs:</div>`;
+    const q = el("input"); q.placeholder = "search your Google Docs";
+    q.style.cssText = "width:100%;margin-top:6px;padding:6px 8px;border:1px solid var(--rule);border-radius:5px;background:var(--panel)";
+    const hits = el("div"); hits.style.marginTop = "6px";
+    q.addEventListener("input", debounce(async () => {
+      hits.innerHTML = "";
+      if (q.value.trim().length < 3) return;
+      let r; try { r = await api("/api/google/search?q=" + encodeURIComponent(q.value.trim())); }
+      catch (x) { hits.textContent = x.error || x.message; return; }
+      for (const f of r.files.slice(0, 8)) {
+        const b2 = el("button","btn", f.name.slice(0, 34));
+        b2.style.cssText = "display:block;width:100%;text-align:left;margin-bottom:4px";
+        b2.onclick = async () => {
+          b2.disabled = true; b2.textContent = "importing…";
+          try {
+            await api("/api/library/add", {method:"POST",
+              headers:{"Content-Type":"application/json"},
+              body: JSON.stringify({source:f.id, google:true})});
+            drawView();
+          } catch (x) { alert(x.error || x.message); b2.disabled = false; }
+        };
+        hits.appendChild(b2);
+      }
+    }, 300));
+    gc.append(q, hits);
+  } else if (g.ready_to_connect) {
+    gc.innerHTML = `<div class="kv">Story OS can import your Google Docs once you
+      give it permission.</div>`;
+    const b2 = el("button","btn primary","Sign in with Google");
+    b2.style.marginTop = "8px";
+    b2.onclick = async () => {
+      b2.disabled = true; b2.textContent = "check your browser…";
+      try { await api("/api/google/connect", {method:"POST",
+              headers:{"Content-Type":"application/json"}, body:"{}"}); }
+      catch (x) { alert(x.setup_text || x.error || x.message); b2.disabled = false; return; }
+      const poll = setInterval(async () => {
+        const s = await api("/api/google/status").catch(() => ({}));
+        if (s.connected) { clearInterval(poll); drawView(); }
+      }, 1500);
+      setTimeout(() => clearInterval(poll), 180000);
+    };
+    gc.appendChild(b2);
+  } else {
+    gc.innerHTML = `<span class="chip warn">setup needed</span>
+      <div class="kv">Story OS needs its own Google OAuth client first — about
+      five minutes, once. Run <code>storyos connect google</code> in a terminal
+      and it prints the exact steps.</div>`;
+  }
+  ctx.appendChild(gc);
+
   ctx.appendChild(el("div","seclabel","PINS"));
-  ctx.appendChild(el("p","empty","No pins yet."));
+  if (!d.pins.length) {
+    ctx.appendChild(el("p","empty",
+      "Nothing pinned. Open a note, select a passage, and pin it to carry that " +
+      "passage into a drafting context."));
+  } else {
+    for (const pn of d.pins) {
+      const card = el("div","card"); card.style.marginBottom = "6px";
+      const isStale = d.stale.some(s => s.id === pn.id);
+      card.innerHTML =
+        `${isStale ? '<span class="chip warn">stale</span>' : '<span class="chip done">live</span>'}
+         <div style="font-size:11.5px;margin-top:4px;font-style:italic">“${esc(pn.excerpt.slice(0,110))}”</div>
+         <div class="kv">${esc(pn.why || "")}</div>`;
+      ctx.appendChild(card);
+    }
+    if (d.stale.length) {
+      ctx.appendChild(el("p","empty",
+        "A stale pin means its note changed after the pin was made. The excerpt " +
+        "that was actually used is frozen in the pin, so nothing silently rewrote " +
+        "the chapter it fed."));
+    }
+  }
+}
+
+async function openNote(note, v, ctx) {
+  const d = await api("/api/library/note?path=" + encodeURIComponent(note.path));
+  head(d.meta.title || note.title, `${note.words.toLocaleString()} words · ${note.source}`);
+  v.innerHTML = ""; ctx.innerHTML = "";
+
+  const bar = el("div"); bar.style.cssText = "margin-bottom:14px;display:flex;gap:8px;align-items:center";
+  const back = el("button","btn","← Library");
+  back.onclick = () => go({name:"library"});
+  bar.appendChild(back);
+  if (note.original) {
+    const open = el("a");
+    open.href = "/api/file?path=" + encodeURIComponent(note.original);
+    open.target = "_blank"; open.className = "btn";
+    open.textContent = note.original.endsWith(".pdf") ? "Open the PDF" : "Open the original";
+    open.style.textDecoration = "none";
+    bar.appendChild(open);
+  }
+  v.appendChild(bar);
+
+  const body = el("div","prose");
+  body.innerHTML = d.body.split(/\n\s*\n/).map(x => {
+    const s = x.trim();
+    if (s.startsWith("## ")) return `<h2 style="font-size:1.05em;margin:1.4em 0 .4em">${esc(s.slice(3))}</h2>`;
+    if (s.startsWith("# ")) return `<h2 style="font-size:1.2em;margin:1.2em 0 .4em">${esc(s.slice(2))}</h2>`;
+    if (s.startsWith("<!--")) return "";
+    return `<p>${esc(s)}</p>`;
+  }).join("");
+  v.appendChild(body);
+
+  ctx.appendChild(el("div","seclabel","PIN A PASSAGE"));
+  const card = el("div","card");
+  card.innerHTML = `<div class="kv">Select text in the note, then say why it matters.
+    The excerpt is copied into the pin, so editing the note later cannot change
+    what a chapter was written against.</div>`;
+  const why = el("input"); why.placeholder = "why this matters";
+  why.style.cssText = "width:100%;margin-top:8px;padding:6px 8px;border:1px solid var(--rule);border-radius:5px;background:var(--panel)";
+  const pinBtn = el("button","btn primary","Pin the selection");
+  pinBtn.style.marginTop = "8px";
+  pinBtn.onclick = async () => {
+    const sel = String(window.getSelection() || "").trim();
+    if (!sel) { alert("Select a passage in the note first."); return; }
+    try {
+      await api("/api/library/pin", {method:"POST",
+        headers:{"Content-Type":"application/json"},
+        body: JSON.stringify({note: note.path, excerpt: sel, why: why.value})});
+      pinBtn.textContent = "pinned";
+      setTimeout(() => go({name:"library"}), 600);
+    } catch (x) { alert(x.error || x.message); }
+  };
+  card.append(why, pinBtn);
+  ctx.appendChild(card);
 }
 
 async function viewInspector(v, ctx) {

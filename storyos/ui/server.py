@@ -124,7 +124,41 @@ class Handler(BaseHTTPRequestHandler):
                                "totals": run_totals(self.env.events(run))})
 
         if path == "/api/search":
-            return self._json(self._search(one("q", ""), one("scope", "all")))
+            from .. import search as S
+            S.reindex(self.env)
+            kinds = tuple(k for k in one("kind", "").split(",") if k)
+            return self._json(S.query(self.env, one("q", ""), kinds=kinds))
+
+        if path == "/api/library":
+            from .. import library
+            from .. import search as S
+            return self._json({"notes": library.notes(self.env),
+                               "pins": library.pins(self.env),
+                               "stale": library.stale_pins(self.env),
+                               "index": S.stats(self.env)})
+
+        if path == "/api/library/note":
+            from .. import library
+            rel = one("path", "")
+            p2 = (self.env.root / rel).resolve()
+            if not p2.is_relative_to(self.env.library.resolve()) or not p2.is_file():
+                raise FileNotFoundError(rel)
+            raw = p2.read_text(errors="replace")
+            return self._json({"path": rel, "meta": library._read_front(raw),
+                               "body": library.body_of(raw)})
+
+        if path == "/api/google/status":
+            from ..sources import google
+            st = google.status(self.env)
+            st["setup_text"] = google.SETUP_TEXT if not st["ready_to_connect"] else ""
+            return self._json(st)
+
+        if path == "/api/google/search":
+            from ..sources import google
+            try:
+                return self._json({"files": google.search(self.env, one("q", ""))})
+            except google.NotConnected as x:
+                return self._err(401, str(x))
 
         self._err(404, f"no route {path}")
 
@@ -140,7 +174,82 @@ class Handler(BaseHTTPRequestHandler):
             return self._enqueue(body)
         if url.path == "/api/decide":
             return self._decide(body)
+        if url.path == "/api/google/connect":
+            return self._google_connect()
+        if url.path == "/api/library/add":
+            return self._library_add(body)
+        if url.path == "/api/library/pin":
+            return self._library_pin(body)
         self._err(404, f"no route {url.path}")
+
+    def _google_connect(self) -> None:
+        """Start the sign-in. The consent page opens in the writer's browser;
+        this returns immediately and the page polls status until it flips."""
+        from ..sources import google
+        try:
+            google.client_config(self.env)
+        except google.SetupNeeded as x:
+            return self._err(428, "setup needed", setup_text=str(x))
+
+        state = {"done": False, "error": ""}
+
+        def run():
+            try:
+                google.connect(self.env, open_browser=True)
+                state["done"] = True
+            except Exception as x:          # surfaced through /api/google/status
+                state["error"] = str(x)
+
+        threading.Thread(target=run, daemon=True).start()
+        self._json({"started": True,
+                    "note": "a Google consent page is opening in your browser"})
+
+    def _library_add(self, body: dict) -> None:
+        from .. import library
+        from ..sources import files, google
+        src = (body.get("source") or "").strip()
+        if not src:
+            return self._err(400, "source is required")
+
+        original = ""
+        try:
+            if "docs.google.com" in src or body.get("google"):
+                doc = google.fetch(self.env, src)
+                if pdf := google.fetch_pdf(self.env, src):
+                    original = library.keep_original(self.env, doc["name"], pdf, ".pdf")
+                path = library.add(self.env, doc["text"], title=doc["name"],
+                                   source="google-docs", source_id=doc["id"],
+                                   modified=doc.get("modified", ""),
+                                   fmt=doc["exported_as"].rsplit("/", 1)[-1],
+                                   original=original)
+            elif files.is_url(src):
+                md, title, fmt, pdf = files.fetch_url_full(src)
+                if pdf:
+                    original = library.keep_original(self.env, title, pdf, ".pdf")
+                path = library.add(self.env, md, title=title, source="web",
+                                   source_id=src, fmt=fmt, original=original)
+            else:
+                return self._err(400, "the page can add a URL or a Google Doc; "
+                                      "local files go through `storyos library add`")
+        except google.NotConnected as x:
+            return self._err(401, str(x))
+        except (files.Unsupported, ValueError, RuntimeError) as x:
+            return self._err(400, str(x))
+
+        from .. import search as S
+        S.reindex(self.env)
+        self._json({"added": str(path.relative_to(self.env.root)),
+                    "original": original})
+
+    def _library_pin(self, body: dict) -> None:
+        from .. import library
+        try:
+            rec = library.pin(self.env, body.get("note", ""),
+                              body.get("excerpt", ""), body.get("why", ""),
+                              chapters=body.get("chapters") or [])
+        except (FileNotFoundError, ValueError) as x:
+            return self._err(400, str(x))
+        self._json({"pinned": rec})
 
     # -- payloads ---------------------------------------------------------
     def _env_payload(self) -> dict:
@@ -367,69 +476,10 @@ class Handler(BaseHTTPRequestHandler):
         path.write_text(json.dumps(doc, indent=2) + "\n")
         self._json({"chapter": units.fmt(ch), "index": idx, "accepted": accepted})
 
-    # -- search -----------------------------------------------------------
-    def _search(self, needle: str, scope: str) -> dict:
-        """Plain substring search over the files that matter.
-
-        Deliberately not FTS5 yet. A novel is ~130k words and the library a few
-        hundred documents; a linear scan answers in milliseconds and has no
-        index to fall out of date, which is the failure mode an index would
-        introduce for no gain at this size.
-        """
-        needle = needle.strip()
-        if len(needle) < 3:
-            return {"query": needle, "results": [], "note": "type at least 3 characters"}
-
-        rx = re.compile(re.escape(needle), re.IGNORECASE)
-        out: list[dict] = []
-        e = self.env
-
-        def scan(kind: str, label: str, text: str, path: str) -> None:
-            for m in list(rx.finditer(text))[:4]:
-                a, b = max(0, m.start() - 70), min(len(text), m.end() + 70)
-                out.append({"kind": kind, "label": label, "path": path,
-                            "offset": m.start(),
-                            "snippet": text[a:b].replace("\n", " ").strip()})
-
-        if scope in ("all", "prose"):
-            for p in sorted((e.root / "chapters").glob("ch*.md")) if (e.root / "chapters").is_dir() else []:
-                if ".v" in p.name:
-                    continue
-                scan("prose", p.stem, p.read_text(errors="replace"), f"chapters/{p.name}")
-            for p in sorted((e.root / "chapters" / "parts").glob("ch*.md")) if (e.root / "chapters" / "parts").is_dir() else []:
-                scan("half", p.stem, p.read_text(errors="replace"),
-                     f"chapters/parts/{p.name}")
-
-        if scope in ("all", "library"):
-            for p in sorted(e.library_notes.glob("**/*.md")) if e.library_notes.is_dir() else []:
-                scan("library", p.stem, p.read_text(errors="replace"),
-                     str(p.relative_to(e.root)))
-
-        if scope in ("all", "findings"):
-            for p in sorted((e.root / "review").glob("*.reconciled.json")) if (e.root / "review").is_dir() else []:
-                doc = json.loads(p.read_text())
-                for bucket in ("confirmed", "contested"):
-                    for item in doc.get(bucket, []):
-                        rows = item if isinstance(item, list) else [item]
-                        for f in rows:
-                            blob = f"{f.get('quote','')} {f.get('why_it_fails','')}"
-                            if rx.search(blob):
-                                out.append({"kind": "finding",
-                                            "label": f"{doc['chapter']} {bucket}",
-                                            "path": str(p.relative_to(e.root)),
-                                            "offset": 0, "snippet": blob[:170].strip()})
-
-        if scope in ("all", "ledger") and e.state.is_file():
-            state = json.loads(e.state.read_text())
-            for section, rows in state.items():
-                for row in rows if isinstance(rows, list) else []:
-                    blob = json.dumps(row)
-                    if rx.search(blob):
-                        out.append({"kind": "ledger", "label": f"{section}: {row.get('name')}",
-                                    "path": "state.json", "offset": 0,
-                                    "snippet": blob[:170]})
-
-        return {"query": needle, "results": out[:60], "total": len(out)}
+    # Search lives in storyos/search.py (SQLite FTS5) and is reached through
+    # the /api/search route above. There is deliberately no second
+    # implementation here: two searches that disagree about what matches is
+    # the same defect class that cost this project its quote verification.
 
 
 # -- inspector arithmetic -------------------------------------------------

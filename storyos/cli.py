@@ -483,9 +483,10 @@ def build_parser() -> argparse.ArgumentParser:
     cn.set_defaults(fn=cmd_connect)
 
     lb = sub.add_parser("library", help="craft knowledge the system can read and pin")
-    lb.add_argument("action", choices=["add", "list", "search"])
+    lb.add_argument("action", choices=["add", "list", "search", "reindex"])
     lb.add_argument("target", nargs="?", help="a file, a URL, or a Google Doc link")
     lb.add_argument("--google", action="store_true", help="treat target as a Google Doc id")
+    lb.add_argument("--full", action="store_true", help="reindex: rebuild from scratch")
     lb.set_defaults(fn=cmd_library)
 
     u = sub.add_parser("ui", help="serve the local page (reads and writes files only)")
@@ -554,18 +555,27 @@ def cmd_library(args) -> int:
     if args.action == "search":
         if not args.target:
             sys.exit("usage: storyos library search <text>")
-        hits = 0
-        for r in library.notes(env):
-            raw = (env.root / r["path"]).read_text(errors="replace")
-            body = library.body_of(raw)
-            low = body.lower()
-            at = low.find(args.target.lower())
-            if at >= 0:
-                hits += 1
-                a, b = max(0, at - 70), min(len(body), at + 90)
-                print(f"  {c(r['title'][:46], BOLD)}  {r['path']}")
-                print(f"    …{body[a:b].replace(chr(10), ' ').strip()}…")
-        print(f"\n  {hits} note(s) matched" if hits else "  no matches")
+        from . import search as S
+        S.reindex(env)
+        d = S.query(env, args.target)
+        if d.get("note"):
+            print(f"  {d['note']}")
+            return 0
+        for r in d["results"]:
+            tag = c(f"[{r['kind']}]", DIM)
+            where = f" {r['unit']}" if r["unit"] else ""
+            print(f"  {tag} {c(r['title'][:44], BOLD)}{where}")
+            print(f"       {r['snippet']}")
+        kinds = ", ".join(f"{v} {k}" for k, v in d.get("by_kind", {}).items())
+        print(f"\n  {d['total']} result(s)" + (f" — {kinds}" if kinds else ""))
+        return 0
+
+    if args.action == "reindex":
+        from . import search as S
+        d = S.reindex(env, full=args.full if hasattr(args, "full") else False)
+        print(f"{c('indexed', GREEN)} {d['documents']} document(s), "
+              f"{d['words']:,} words")
+        print(f"  {d['updated']} updated, {d['removed']} removed")
         return 0
 
     # add
