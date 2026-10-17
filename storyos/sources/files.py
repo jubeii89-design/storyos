@@ -190,3 +190,76 @@ def fetch_url(url: str) -> tuple[str, str, str]:
         raise RuntimeError(f"could not fetch {url}")
     md, title = _html(raw, url)
     return md, title or urllib.parse.urlparse(url).path.strip("/") or url, "web"
+
+
+# -- preserving the original ---------------------------------------------
+
+CHROMIUM = (
+    "/opt/pw-browsers/chromium-1194/chrome-linux/chrome",
+    "/usr/bin/chromium", "/usr/bin/chromium-browser", "/usr/bin/google-chrome",
+    "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
+)
+
+
+def _chromium() -> str | None:
+    import shutil
+    for c in CHROMIUM:
+        if Path(c).is_file():
+            return c
+    return shutil.which("chromium") or shutil.which("google-chrome")
+
+
+def html_to_pdf(html: str, out: Path, *, base_url: str = "") -> bool:
+    """Render HTML to PDF so a web source is kept as a fixed page.
+
+    A URL is not an archive -- the page changes or disappears and the note
+    becomes a claim with no source. A PDF of what was actually read is.
+    Returns False when no browser is installed, and the caller falls back to
+    keeping only the Markdown.
+    """
+    import subprocess
+    import tempfile
+
+    chrome = _chromium()
+    if chrome is None:
+        return False
+
+    with tempfile.TemporaryDirectory() as tmp:
+        src = Path(tmp) / "page.html"
+        header = f'<base href="{base_url}">' if base_url else ""
+        src.write_text(f"<!doctype html><meta charset=utf-8>{header}{html}",
+                       errors="replace")
+        out.parent.mkdir(parents=True, exist_ok=True)
+        try:
+            subprocess.run(
+                [chrome, "--headless", "--disable-gpu", "--no-sandbox",
+                 "--no-pdf-header-footer", f"--print-to-pdf={out}", src.as_uri()],
+                check=True, capture_output=True, timeout=120)
+        except (subprocess.SubprocessError, OSError):
+            return False
+    return out.is_file() and out.stat().st_size > 0
+
+
+def fetch_url_full(url: str) -> tuple[str, str, str, bytes | None]:
+    """A web page as Markdown, plus a PDF snapshot of what was read.
+
+    Returns `(markdown, title, format, pdf_bytes_or_None)`.
+    """
+    try:
+        import trafilatura
+    except ImportError:
+        raise Unsupported("Web support needs: pip install 'storyos[library]'") from None
+
+    raw = trafilatura.fetch_url(url)
+    if not raw:
+        raise RuntimeError(f"could not fetch {url}")
+    md, title = _html(raw, url)
+
+    pdf = None
+    import tempfile
+    with tempfile.TemporaryDirectory() as tmp:
+        out = Path(tmp) / "snapshot.pdf"
+        if html_to_pdf(raw, out, base_url=url):
+            pdf = out.read_bytes()
+
+    return md, title or urllib.parse.urlparse(url).path.strip("/") or url, "web", pdf

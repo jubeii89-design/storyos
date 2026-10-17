@@ -123,6 +123,17 @@ class Env:
     def library(self) -> Path: return self.root / "library"
     @property
     def library_notes(self) -> Path: return self.library / "notes"
+
+    @property
+    def library_source(self) -> Path:
+        """The documents as they arrived -- the PDF you can actually read.
+
+        The Markdown in notes/ is a derivative: it powers search, the reader
+        and the pin anchors. The original is what you open to check a quote
+        against the real page, and what a better extractor can be re-run over
+        in two years. Throwing it away makes every extraction permanent.
+        """
+        return self.library / "source"
     @property
     def library_index(self) -> Path: return self.library / "index.sqlite3"
     @property

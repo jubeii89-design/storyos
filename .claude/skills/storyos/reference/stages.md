@@ -182,7 +182,13 @@ One environment directory, which **is** the book. `.storyos` at its root marks i
 ~/TheLongOrbit/
   .storyos  .env  models.json    the bench, and the only place a key exists
   prompts/ reference/ templates/ rules, genre contracts, the DOCX reference
-  library/notes/*.md             craft knowledge, readable and pinnable
+  library/source/*.pdf           the documents as they arrived -- the standard
+                                 kept form, because a PDF has fixed pages, a
+                                 quote can be checked against the page a reader
+                                 would see, and it opens in anything
+  library/notes/*.md             the searchable, pinnable derivative. Where no
+                                 PDF can be had -- a plain note, a text file --
+                                 this IS the document and nothing else is kept
   library/index.sqlite3          FTS5 search — derived, gitignored
   premise.md dossier.md genre.json style.json outline.json
   beats/ chapters/ deltas/ checks/ review/ cover/ export/ runs/

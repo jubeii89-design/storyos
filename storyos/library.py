@@ -29,21 +29,43 @@ def slugify(name: str, *, limit: int = 60) -> str:
 
 def front_matter(meta: dict) -> str:
     lines = ["---"]
-    for k in ("title", "source", "source_id", "fetched", "modified", "format", "words"):
+    for k in ("title", "source", "source_id", "fetched", "modified", "format",
+              "words", "original"):
         if meta.get(k) not in (None, ""):
             lines.append(f"{k}: {json.dumps(meta[k])}")
     lines.append("---")
     return "\n".join(lines) + "\n\n"
 
 
+def keep_original(env, title: str, data: bytes, suffix: str) -> str:
+    """Store the document as it arrived. Returns its path inside the library.
+
+    PDF is the standard kept form because it is fixed: page numbers hold, a
+    quote can be checked against the page a reader would see, and it opens in
+    anything. Where no PDF can be had -- a plain Markdown note, a text file --
+    the Markdown is the original and nothing extra is stored.
+    """
+    env.library_source.mkdir(parents=True, exist_ok=True)
+    path = env.library_source / f"{slugify(title)}{suffix}"
+    n = 2
+    while path.exists() and hashlib.sha256(path.read_bytes()).digest() != \
+            hashlib.sha256(data).digest():
+        path = env.library_source / f"{slugify(title)}-{n}{suffix}"
+        n += 1
+    path.write_bytes(data)
+    return str(path.relative_to(env.root))
+
+
 def add(env, text: str, *, title: str, source: str, source_id: str = "",
-        modified: str = "", fmt: str = "markdown", overwrite: bool = False) -> Path:
+        modified: str = "", fmt: str = "markdown", overwrite: bool = False,
+        original: str = "") -> Path:
     """Write one note. Returns its path."""
     env.library_notes.mkdir(parents=True, exist_ok=True)
     body = text.strip() + "\n"
     meta = {"title": title, "source": source, "source_id": source_id,
             "fetched": dt.datetime.now(dt.timezone.utc).isoformat(timespec="seconds"),
-            "modified": modified, "format": fmt, "words": len(body.split())}
+            "modified": modified, "format": fmt, "words": len(body.split()),
+            "original": original}
 
     path = env.library_notes / f"{slugify(title)}.md"
     if path.exists() and not overwrite:
@@ -73,6 +95,7 @@ def notes(env) -> list[dict]:
         out.append({"path": str(p.relative_to(env.root)), "file": p.name,
                     "title": meta.get("title", p.stem),
                     "source": meta.get("source", "unknown"),
+                    "original": meta.get("original", ""),
                     "words": meta.get("words") or len(raw.split()),
                     "sha": hashlib.sha256(raw.encode()).hexdigest()[:12]})
     return out

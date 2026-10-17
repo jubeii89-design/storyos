@@ -542,7 +542,9 @@ def cmd_library(args) -> int:
             print("  add craft knowledge with: storyos library add <file|url|google-doc>")
             return 0
         for r in rows:
-            print(f"  {r['words']:>6,}w  {r['source']:<10} {r['title'][:52]}")
+            mark = "PDF" if r.get("original", "").endswith(".pdf") else \
+                   "doc" if r.get("original") else "  —"
+            print(f"  {r['words']:>6,}w  {mark}  {r['source']:<10} {r['title'][:48]}")
         print(f"\n  {len(rows)} note(s) in {env.library_notes}")
         stale = library.stale_pins(env)
         if stale:
@@ -571,6 +573,9 @@ def cmd_library(args) -> int:
     if not src:
         sys.exit("usage: storyos library add <file path | url | google doc url>")
 
+    # PDF is the standard kept form: fixed pages, checkable quotes, opens
+    # anywhere. Where no PDF can be had the Markdown is the original.
+    original = ""
     try:
         if "docs.google.com" in src or (args.google and src):
             st = google.status(env)
@@ -580,18 +585,39 @@ def cmd_library(args) -> int:
                 print("  Run:  storyos connect google")
                 return 1
             doc = google.fetch(env, src)
+            if pdf := google.fetch_pdf(env, src):
+                original = library.keep_original(env, doc["name"], pdf, ".pdf")
             path = library.add(env, doc["text"], title=doc["name"],
                                source="google-docs", source_id=doc["id"],
                                modified=doc.get("modified", ""),
-                               fmt=doc["exported_as"].rsplit("/", 1)[-1])
+                               fmt=doc["exported_as"].rsplit("/", 1)[-1],
+                               original=original)
             fmt = doc["exported_as"]
         elif files.is_url(src):
-            md, title, fmt = files.fetch_url(src)
-            path = library.add(env, md, title=title, source="web", source_id=src, fmt=fmt)
+            md, title, fmt, pdf = files.fetch_url_full(src)
+            if pdf:
+                original = library.keep_original(env, title, pdf, ".pdf")
+            path = library.add(env, md, title=title, source="web",
+                               source_id=src, fmt=fmt, original=original)
         else:
             md, title, fmt = files.read(src)
+            raw = Path(src).expanduser()
+            ext = raw.suffix.lower()
+            if ext in (".pdf", ".docx"):
+                original = library.keep_original(env, title, raw.read_bytes(), ext)
+            elif ext in (".html", ".htm"):
+                # Render it, so an imported page is kept the way it looked
+                # rather than as a file that needs a browser and its assets.
+                import tempfile
+                with tempfile.TemporaryDirectory() as tmp:
+                    out = Path(tmp) / "p.pdf"
+                    if files.html_to_pdf(raw.read_text(errors="replace"), out,
+                                         base_url=raw.resolve().as_uri()):
+                        original = library.keep_original(env, title,
+                                                         out.read_bytes(), ".pdf")
             path = library.add(env, md, title=title, source=fmt,
-                               source_id=str(Path(src).resolve()), fmt=fmt)
+                               source_id=str(raw.resolve()), fmt=fmt,
+                               original=original)
     except google.NotConnected as x:
         print(c("Google says no", AMBER)); print(f"  {x}")
         print("  Run:  storyos connect google")
@@ -601,7 +627,13 @@ def cmd_library(args) -> int:
 
     words = len(path.read_text().split())
     print(f"{c('added', GREEN)} {path.name}")
-    print(f"  {words:,} words · from {fmt} · {path}")
+    print(f"  {words:,} words · from {fmt}")
+    print(f"  searchable: {path.relative_to(env.root)}")
+    if original:
+        kind = "PDF kept" if original.endswith(".pdf") else "original kept"
+        print(f"  {kind}:  {original}")
+    else:
+        print(f"  no separate original — the Markdown is the document")
     return 0
 
 

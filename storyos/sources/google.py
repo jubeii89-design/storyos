@@ -372,6 +372,22 @@ def _export(fid: str, token: str) -> tuple[str, str]:
     raise RuntimeError(f"Google would not export that document: {last}")
 
 
+def fetch_pdf(env, url_or_id: str) -> bytes | None:
+    """The Doc as Google renders it to PDF -- the fixed, readable original.
+
+    Markdown is what the library searches; this is what you open to see the
+    document as its author laid it out. Returns None if Google will not
+    export a PDF for that file type.
+    """
+    fid = doc_id(url_or_id)
+    try:
+        raw, _ = _get(f"{DRIVE_FILES}/{fid}/export", access_token(env),
+                      params={"mimeType": "application/pdf"})
+        return raw
+    except RuntimeError:
+        return None
+
+
 def search(env, query: str, *, limit: int = 20) -> list[dict]:
     """Find the writer's Docs by name, so an id never has to be typed."""
     safe = query.replace("'", "\\'")
