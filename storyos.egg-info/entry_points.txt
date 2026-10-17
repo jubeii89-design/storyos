@@ -1,2 +1,0 @@
-[console_scripts]
-storyos = storyos.cli:main
