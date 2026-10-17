@@ -25,6 +25,7 @@ from __future__ import annotations
 import dataclasses
 import json
 import os
+import pathlib
 import time
 import uuid
 from pathlib import Path
@@ -160,19 +161,53 @@ def completed_stages(path: str | os.PathLike) -> set[tuple[int, str, str]]:
     return {k for k, ok in outcome.items() if ok}
 
 
-def review_failures(path: str | os.PathLike, chapter: int) -> int:
-    """How many times this chapter's review returned `rewrite`.
+def all_event_logs(project_dir: str | os.PathLike) -> list[str]:
+    """Every run's log, oldest first. Run ids sort chronologically by design."""
+    runs = pathlib.Path(project_dir) / "runs"
+    if not runs.is_dir():
+        return []
+    return [str(d / "events.jsonl") for d in sorted(runs.iterdir())
+            if (d / "events.jsonl").is_file()]
+
+
+def completed_all(project_dir: str | os.PathLike) -> set[tuple[int, str, str]]:
+    """The resume key folded across every run, not just the latest.
+
+    This is the function callers want. `completed_stages` reads one log, and
+    reading only the newest one is wrong the moment there is a second run:
+    a per-turn drain opens a new run id, so by chapter 3 the system would
+    believe nothing had ever been done and redraft the book from the start.
+    Later runs win, because the last outcome for a key is the true one.
+    """
+    outcome: dict[tuple[int, str, str], bool] = {}
+    for log in all_event_logs(project_dir):
+        for ev in read_events(log):
+            if ev.get("event") == "stage_end":
+                key = (ev["chapter"], ev.get("part", ""), ev["stage"])
+                outcome[key] = bool(ev.get("ok"))
+    return {k for k, ok in outcome.items() if ok}
+
+
+def review_failures(project_dir: str | os.PathLike, chapter: int) -> int:
+    """How many times this chapter's review returned `rewrite`, across all runs.
 
     This is what `models.json`'s `escalate_after_failures` counts. Derived by
     replay rather than stored, so it survives a crash like everything else.
+
+    Matches any stage whose name starts with `review`, because the pipeline
+    emits `review_a` and `review_b` -- never a bare `review`. An earlier
+    version compared against `"review"` exactly, so escalation could never
+    fire and the amber warning in `status` was unreachable code.
     """
-    return sum(
-        1 for ev in read_events(path)
-        if ev.get("event") == "stage_end"
-        and ev.get("stage") == "review"
-        and ev.get("chapter") == chapter
-        and ev.get("verdict") == "rewrite"
-    )
+    n = 0
+    for log in all_event_logs(project_dir):
+        for ev in read_events(log):
+            if (ev.get("event") == "stage_end"
+                    and str(ev.get("stage", "")).startswith("review")
+                    and ev.get("chapter") == chapter
+                    and ev.get("verdict") == "rewrite"):
+                n += 1
+    return n
 
 
 def run_totals(path: str | os.PathLike) -> dict:

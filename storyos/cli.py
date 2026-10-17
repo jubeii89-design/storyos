@@ -18,7 +18,7 @@ import sys
 from pathlib import Path
 
 from . import stages, units
-from .events import completed_stages, review_failures, run_totals
+from .events import completed_all, review_failures, run_totals
 from .paths import Env, EnvNotFound
 from .project import DEFAULT_CHAPTERS, init_env
 
@@ -42,8 +42,8 @@ def _env(args) -> Env:
 
 
 def _done(env: Env) -> tuple[set, str | None]:
-    run = env.latest_run()
-    return (completed_stages(env.events(run)) if run else set()), run
+    """Folded across every run. `latest_run` is only for the run strip."""
+    return completed_all(env.root), env.latest_run()
 
 
 # -- commands -------------------------------------------------------------
@@ -103,7 +103,7 @@ def cmd_status(args) -> int:
         print(f"        {c('this one is yours', BOLD)} — open it and write:")
         print(f"        {c(str(env.premise), BOLD)}")
     elif st.model:
-        esc = review_failures(env.events(run), chapter) if run and chapter else 0
+        esc = review_failures(env.root, chapter) if chapter else 0
         model = _model_for(env, stage, esc)
         print(f"        needs a model ({model}) — run it through the skill:")
         print(f"        {c(f'/storyos {stage} ' + (units.fmt(chapter, part) if chapter else ''), BOLD)}")
