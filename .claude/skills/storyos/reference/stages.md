@@ -176,18 +176,32 @@ gitignored.
 
 ## Where these files live
 
-All of it inside one environment directory, `.storyos` at its root marking it:
+One environment directory, which **is** the book. `.storyos` at its root marks it.
 
 ```
-~/writing/
-  .storyos  .env  models.json         the bench, and the only place keys exist
-  prompts/  reference/  templates/    rules, genre contracts, the DOCX reference
-  library/notes/*.md                  knowledge shared across every book
-  library/index.sqlite3               FTS5 search, derived, gitignored
-  projects/<slug>/                    one book, laid out as the tables above
+~/TheLongOrbit/
+  .storyos  .env  models.json    the bench, and the only place a key exists
+  prompts/ reference/ templates/ rules, genre contracts, the DOCX reference
+  library/notes/*.md             craft knowledge, readable and pinnable
+  library/index.sqlite3          FTS5 search — derived, gitignored
+  premise.md dossier.md genre.json style.json outline.json
+  beats/ chapters/ deltas/ checks/ review/ cover/ export/ runs/
+  state.json manuscript.md       derived, rebuildable, gitignored
 ```
 
-`storyos/paths.py` resolves all of it. Nothing in the system builds a path by
-string concatenation, and nothing parses a unit id outside `storyos/units.py` —
-two implementations of one grammar is the defect class that cost this project
-its quote verification.
+There is no project list and no slug. The directory you are standing in is the
+book you are writing, so `storyos draft 07a` needs no argument naming which
+book, and there is no way to write a half into the wrong one. A second book is a
+second directory with its own `.storyos`, its own library and its own bench —
+nothing is shared, and nothing can leak between them.
+
+The environment is found by explicit argument, then `$STORYOS_ENV`, then by
+walking up from the working directory for the marker. The walk is last because
+it is the convenient one, and convenience should not silently beat a stated
+intention.
+
+`storyos/paths.py` resolves every path above. Nothing in the system builds a
+path by string concatenation, and nothing parses a unit id outside
+`storyos/units.py` — two implementations of one grammar is the defect class that
+cost this project its quote verification, and it will not be repeated for
+something as load-bearing as which chapter a file belongs to.
