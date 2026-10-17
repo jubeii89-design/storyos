@@ -138,6 +138,8 @@ FREE_STAGES = {
     "seam_verify":    lambda env, unit, run: _seam_verify(env, unit),
     "state_rebuild":  lambda env, unit, run: _state(env),
     "chapter_commit": lambda env, unit, run: _commit(env, unit),
+    "reconcile":      lambda env, unit, run: _reconcile(env, unit),
+    "export":         lambda env, unit, run: _export(env),
 }
 
 
@@ -258,6 +260,39 @@ def _state(env):
     return [f"{len(s['characters'])} characters, {len(s['world'])} world rows, "
             f"{len(s['places'])} places",
             f"provisional: {sum(1 for g in s.values() for r in g if r.get('provisional'))}"]
+
+
+def _reconcile(env, unit):
+    from .review.run import run
+    d = run(env, unit)
+    lines = [d["summary"]]
+    for who, bad in d["schema_violations"].items():
+        for v in bad:
+            lines.append(c(f"{who}: {v}", AMBER))
+    for pair in d["confirmed"]:
+        lines.append(f"CONFIRMED  \u201c{pair[0]['quote'][:58]}\u2026\u201d")
+        lines.append(f"           fails: {pair[0]['why_it_fails'][:64]}")
+        lines.append(f"           reaching for: {pair[0]['reaches_for'][:58]}")
+    for f in d["contested"]:
+        lines.append(f"contested  [{f['reviewer']}] \u201c{f['quote'][:50]}\u2026\u201d")
+    for f in d["hallucinated"]:
+        lines.append(c(f"discarded  \u201c{f['quote'][:46]}\u2026\u201d "
+                       f"({f['match_ratio']:.0%} match)", DIM))
+    lines.append("")
+    lines.append("confirmed findings go to revise; contested ones are yours to call")
+    return lines
+
+
+def _export(env):
+    from .export import run
+    r = run(env)
+    lines = [f"{r['chapters']} chapter(s), {r['words']:,} words"]
+    for fmt, path in r["files"].items():
+        lines.append(f"{fmt:5} {path}")
+    missing = {"docx","epub","pdf"} - set(r["files"])
+    if missing:
+        lines.append(c(f"not produced: {', '.join(sorted(missing))}", AMBER))
+    return lines
 
 
 def _commit(env, unit):
