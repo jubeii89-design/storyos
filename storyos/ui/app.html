@@ -1,0 +1,796 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Story OS</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;0,6..72,600;1,6..72,400&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+  :root {
+    --ground:#FAF8F3; --panel:#FFFFFF; --ink:#1A1815; --muted:#6B6459;
+    --faint:#8C857A; --rule:#E3DDD1; --rail:#F1ECE1; --rail-rule:#E0D9CB;
+    --clay:#A8452A; --clay-dim:#FDF0EA; --clay-rule:#DEB29C;
+    --teal:#2C6355; --teal-dim:#E4EFEB; --teal-rule:#BCD6CE;
+    --amber:#8A5A0B; --amber-dim:#FBF2DE; --amber-rule:#E8D5A8;
+    --violet:#4A3D68; --violet-dim:#EDEAF3; --violet-rule:#CFC7E0;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --ground:#171614; --panel:#1E1D1A; --ink:#EDE9E1; --muted:#A9A197;
+      --faint:#8A837A; --rule:#302E29; --rail:#1B1A17; --rail-rule:#2B2924;
+      --clay:#D9876B; --clay-dim:#2E1F19; --clay-rule:#5C3A2B;
+      --teal:#6FB8A4; --teal-dim:#16251F; --teal-rule:#2E4C42;
+      --amber:#D8A942; --amber-dim:#2A2213; --amber-rule:#4D3F1C;
+      --violet:#A99BD0; --violet-dim:#211C2E; --violet-rule:#3D3454;
+    }
+  }
+  :root[data-theme="dark"] {
+    --ground:#171614; --panel:#1E1D1A; --ink:#EDE9E1; --muted:#A9A197;
+    --faint:#8A837A; --rule:#302E29; --rail:#1B1A17; --rail-rule:#2B2924;
+    --clay:#D9876B; --clay-dim:#2E1F19; --clay-rule:#5C3A2B;
+    --teal:#6FB8A4; --teal-dim:#16251F; --teal-rule:#2E4C42;
+    --amber:#D8A942; --amber-dim:#2A2213; --amber-rule:#4D3F1C;
+    --violet:#A99BD0; --violet-dim:#211C2E; --violet-rule:#3D3454;
+  }
+
+  * { box-sizing:border-box; }
+  html,body { margin:0; height:100%; }
+  body { background:var(--ground); color:var(--ink);
+         font:14px/1.5 "IBM Plex Sans",system-ui,sans-serif; overflow:hidden; }
+  button,input,select { font:inherit; color:inherit; }
+  button { cursor:pointer; }
+  a { color:var(--clay); }
+  .mono { font-family:"IBM Plex Mono",monospace; }
+  .serif { font-family:"Newsreader",Georgia,serif; }
+
+  #app { display:flex; flex-direction:column; height:100%; }
+  #body { flex:1; display:flex; min-height:0; }
+
+  /* rail */
+  #rail { width:216px; flex:none; background:var(--rail);
+          border-right:1px solid var(--rail-rule); padding:14px 12px;
+          display:flex; flex-direction:column; gap:14px; overflow-y:auto; }
+  .brand { display:flex; align-items:baseline; gap:6px; }
+  .brand b { font-family:"Newsreader",serif; font-size:17px; font-weight:600; }
+  .brand span { font-family:"IBM Plex Mono",monospace; font-size:9.5px; color:var(--faint); }
+  .seclabel { font-size:9.5px; font-weight:600; letter-spacing:.08em;
+              color:var(--faint); margin-bottom:6px; }
+  .navbtn { display:flex; align-items:center; gap:8px; width:100%;
+            padding:7px 9px; border:1px solid transparent; border-radius:6px;
+            background:none; font-size:12.5px; text-align:left; color:var(--muted); }
+  .navbtn:hover { background:var(--panel); }
+  .navbtn[aria-current="true"] { background:var(--panel); border-color:var(--clay-rule);
+            color:var(--ink); font-weight:600; }
+  .navbtn .n { margin-left:auto; font-family:"IBM Plex Mono",monospace;
+               font-size:10px; color:var(--faint); }
+  .card { background:var(--panel); border:1px solid var(--rule);
+          border-radius:8px; padding:10px 11px; }
+  .nextcmd { font-family:"IBM Plex Mono",monospace; font-size:10.5px;
+             background:var(--ground); border:1px solid var(--rule);
+             border-radius:5px; padding:6px 7px; margin-top:6px;
+             word-break:break-all; cursor:copy; }
+  .nextcmd:hover { border-color:var(--clay-rule); }
+
+  /* spine */
+  #spine { width:168px; flex:none; background:var(--panel);
+           border-right:1px solid var(--rule); overflow-y:auto; padding:10px 8px; }
+  .srow { display:flex; align-items:center; gap:6px; width:100%; padding:4px 6px;
+          border:1px solid transparent; border-radius:5px; background:none;
+          font-size:11.5px; text-align:left; }
+  .srow:hover { background:var(--ground); }
+  .srow[aria-current="true"] { border-color:var(--clay-rule); background:var(--clay-dim); }
+  .srow .id { font-family:"IBM Plex Mono",monospace; font-size:10.5px;
+              width:30px; flex:none; color:var(--muted); }
+  .pips { display:flex; gap:2px; margin-left:auto; }
+  .pip { width:6px; height:6px; border-radius:50%; background:var(--rule); }
+  .pip.done { background:var(--teal); }
+  .pip.queued { background:var(--amber); }
+  .pip.next { background:var(--clay); box-shadow:0 0 0 2px var(--clay-dim); }
+
+  /* centre */
+  #main { flex:1; min-width:0; display:flex; flex-direction:column;
+          background:var(--panel); }
+  #crumb { flex:none; padding:10px 20px; border-bottom:1px solid var(--rule);
+           display:flex; align-items:center; gap:10px; background:var(--ground); }
+  #crumb h1 { margin:0; font-family:"Newsreader",serif; font-size:16px; font-weight:600; }
+  #crumb .where { font-size:11.5px; color:var(--faint); }
+  #view { flex:1; overflow-y:auto; padding:18px 20px; }
+  .prose { font-family:"Newsreader",Georgia,serif; font-size:16px; line-height:1.68;
+           max-width:34em; }
+  .prose p { margin:0 0 1em; }
+  .empty { color:var(--faint); font-size:13px; max-width:46em; line-height:1.6; }
+
+  /* context */
+  #ctx { width:300px; flex:none; background:var(--ground);
+         border-left:1px solid var(--rule); padding:14px; overflow-y:auto; }
+
+  /* run strip */
+  #strip { flex:none; height:38px; padding:0 16px; background:var(--rail);
+           border-top:1px solid var(--rail-rule); display:flex; align-items:center;
+           gap:12px; font-size:11.5px; }
+  .dot { width:7px; height:7px; border-radius:50%; background:var(--teal); flex:none; }
+  .dot.idle { background:var(--rule); }
+
+  /* bits */
+  .chip { font-size:9.5px; font-weight:600; letter-spacing:.04em; padding:2px 7px;
+          border-radius:4px; white-space:nowrap; }
+  .chip.done { background:var(--teal-dim); border:1px solid var(--teal-rule); color:var(--teal); }
+  .chip.todo { background:var(--ground); border:1px solid var(--rule); color:var(--faint); }
+  .chip.model { background:var(--violet-dim); border:1px solid var(--violet-rule); color:var(--violet); }
+  .chip.free { background:var(--teal-dim); border:1px solid var(--teal-rule); color:var(--teal); }
+  .chip.you { background:var(--amber-dim); border:1px solid var(--amber-rule); color:var(--amber); }
+  .chip.warn { background:var(--clay-dim); border:1px solid var(--clay-rule); color:var(--clay); }
+  table { width:100%; border-collapse:collapse; font-size:12px; }
+  th { text-align:left; font-size:9.5px; letter-spacing:.07em; color:var(--faint);
+       font-weight:600; padding:0 8px 6px 0; }
+  td { padding:5px 8px 5px 0; border-top:1px solid var(--rule); vertical-align:top; }
+  .btn { padding:6px 11px; border:1px solid var(--rule); border-radius:6px;
+         background:var(--panel); font-size:11.5px; font-weight:600; }
+  .btn:hover { border-color:var(--clay-rule); }
+  .btn.primary { background:var(--clay); border-color:var(--clay); color:#fff; }
+  .finding { border:1px solid var(--rule); border-left-width:3px; border-radius:3px 7px 7px 3px;
+             padding:9px 11px; margin-bottom:7px; }
+  .finding.confirmed { border-color:var(--teal-rule); background:var(--teal-dim); }
+  .finding.contested { border-color:var(--amber-rule); background:var(--amber-dim); }
+  .finding.gone { border-color:var(--rule); opacity:.6; }
+  .finding q { font-family:"Newsreader",serif; font-style:italic; font-size:13.5px; }
+  .kv { font-size:11.5px; color:var(--muted); margin-top:4px; }
+  .kv b { color:var(--ink); font-weight:600; }
+  #searchwrap { position:relative; margin-left:auto; }
+  #q { width:230px; padding:6px 9px; border:1px solid var(--rule); border-radius:6px;
+       background:var(--panel); font-size:12px; }
+  #results { position:absolute; right:0; top:34px; width:460px; max-height:60vh;
+             overflow-y:auto; background:var(--panel); border:1px solid var(--rule);
+             border-radius:8px; box-shadow:0 10px 30px rgba(0,0,0,.14); z-index:40;
+             padding:6px; }
+  .hit { padding:7px 9px; border-radius:6px; cursor:pointer; }
+  .hit:hover { background:var(--ground); }
+  .hit .snip { font-size:11.5px; color:var(--muted); margin-top:2px; }
+  .bar { height:8px; background:var(--rule); border-radius:4px; overflow:hidden; display:flex; }
+  .bar i { display:block; height:100%; }
+</style>
+</head>
+<body>
+<div id="app">
+  <div id="body">
+    <nav id="rail" aria-label="Main">
+      <div class="brand"><b>Story OS</b><span id="port"></span></div>
+      <div class="card">
+        <div class="seclabel">BOOK</div>
+        <div class="serif" style="font-size:15px;font-weight:600" id="title">…</div>
+        <div style="font-size:11px;color:var(--muted);margin-top:2px" id="progress"></div>
+      </div>
+      <div class="card">
+        <div class="seclabel">NEXT</div>
+        <div id="nextlabel" style="font-size:12.5px;font-weight:600">…</div>
+        <div id="nextwho" style="margin-top:4px"></div>
+        <div class="nextcmd" id="nextcmd" title="click to copy"></div>
+        <div id="nextqueue" style="margin-top:7px"></div>
+      </div>
+      <div>
+        <div class="seclabel">WORKSPACE</div>
+        <div id="nav"></div>
+      </div>
+      <div style="margin-top:auto">
+        <div class="seclabel">CRITICS</div>
+        <div id="critics" style="font-size:11px;color:var(--muted);line-height:1.6"></div>
+      </div>
+    </nav>
+
+    <div id="spine" aria-label="Chapters"></div>
+
+    <main id="main">
+      <div id="crumb">
+        <h1 id="vtitle">…</h1>
+        <span class="where" id="vwhere"></span>
+        <div id="searchwrap">
+          <input id="q" type="search" placeholder="Search prose, library, findings…"
+                 autocomplete="off" aria-label="Search">
+          <div id="results" hidden></div>
+        </div>
+      </div>
+      <div id="view"></div>
+    </main>
+
+    <aside id="ctx" aria-label="Context"></aside>
+  </div>
+
+  <div id="strip">
+    <span class="dot idle" id="runDot"></span>
+    <span id="runText" class="mono" style="color:var(--muted)">no runs yet</span>
+    <span style="margin-left:auto;display:flex;gap:10px;align-items:center">
+      <button class="btn" id="themeBtn" title="Toggle theme">◐</button>
+      <span class="mono" style="font-size:10.5px;color:var(--faint)" id="refreshed"></span>
+    </span>
+  </div>
+</div>
+
+<script>
+const $ = s => document.querySelector(s);
+const el = (t, c, txt) => { const n = document.createElement(t);
+  if (c) n.className = c; if (txt != null) n.textContent = txt; return n; };
+const esc = s => (s ?? "").replace(/[&<>]/g, m => ({"&":"&amp;","<":"&lt;",">":"&gt;"}[m]));
+
+const HALF_STAGES = ["context_pack","draft","length_gate","delta_extract","state_rebuild"];
+const CH_STAGES = ["beats","split_beats","join","seam_check","seam","seam_verify",
+                   "review_a","review_b","reconcile","revise","chapter_commit"];
+
+let ENV = null, PLAN = null, QUEUE = null, VIEW = {name:"pipeline"};
+
+async function api(path, opts) {
+  const r = await fetch(path, opts);
+  const body = await r.json().catch(() => ({error:"bad JSON from server"}));
+  if (!r.ok) throw Object.assign(new Error(body.error || r.statusText), body);
+  return body;
+}
+
+/* ---------- boot ---------- */
+async function boot() {
+  $("#port").textContent = ":" + location.port;
+  $("#themeBtn").onclick = () => {
+    const now = document.documentElement.getAttribute("data-theme");
+    const next = now === "dark" ? "light" : "dark";
+    document.documentElement.setAttribute("data-theme", next);
+    try { localStorage.setItem("storyos-theme", next); } catch {}
+  };
+  try { const t = localStorage.getItem("storyos-theme");
+        if (t) document.documentElement.setAttribute("data-theme", t); } catch {}
+
+  $("#q").addEventListener("input", debounce(search, 220));
+  $("#q").addEventListener("blur", () => setTimeout(() => $("#results").hidden = true, 160));
+  document.addEventListener("keydown", e => {
+    if ((e.metaKey || e.ctrlKey) && e.key === "k") { e.preventDefault(); $("#q").focus(); }
+    if (e.key === "Escape") $("#results").hidden = true;
+  });
+
+  readHash();
+  window.addEventListener("hashchange", () => { readHash(); drawRail(); drawSpine(); drawView(); });
+
+  await refresh();
+  setInterval(refresh, 2500);
+}
+
+/* A view is addressable, so it can be linked, bookmarked and reopened where
+   you left it rather than resetting to the pipeline on every reload. */
+function readHash() {
+  const h = decodeURIComponent(location.hash.replace(/^#/, ""));
+  if (!h) return;
+  const [name, arg] = h.split(":");
+  if (name === "half" && arg) VIEW = {name:"half", unit:arg};
+  else if (name === "chapter" && arg) VIEW = {name:"chapter", chapter:arg};
+  else if (["pipeline","book","review","library","inspector","queue"].includes(name))
+    VIEW = {name};
+}
+
+function go(v) {
+  VIEW = v;
+  const frag = v.unit ? `half:${v.unit}` : v.chapter ? `chapter:${v.chapter}` : v.name;
+  if (location.hash.replace(/^#/,"") !== frag) location.hash = frag;
+  drawRail(); drawSpine(); drawView();
+}
+
+async function refresh() {
+  try {
+    [ENV, PLAN, QUEUE] = await Promise.all([
+      api("/api/env"), api("/api/plan"), api("/api/queue")]);
+  } catch (x) {
+    $("#view").innerHTML = `<p class="empty">Cannot reach the server: ${esc(x.message)}</p>`;
+    return;
+  }
+  drawRail(); drawSpine(); drawStrip();
+  await drawView();
+  $("#refreshed").textContent = new Date().toLocaleTimeString();
+}
+
+/* ---------- rail ---------- */
+function drawRail() {
+  $("#title").textContent = ENV.title;
+  const p = PLAN.progress;
+  $("#progress").textContent =
+    `${p.committed}/${p.chapters} chapters · ${p.halves}/${p.chapters*2} halves · ${p.words.toLocaleString()} words`;
+
+  const n = PLAN.next;
+  if (!n) {
+    $("#nextlabel").textContent = "Complete";
+    $("#nextwho").innerHTML = ""; $("#nextcmd").textContent = "";
+  } else {
+    $("#nextlabel").textContent = n.label;
+    const who = n.human ? ["you","you"] : n.model ? ["model","a model"] : ["free","free · Python"];
+    $("#nextwho").innerHTML = `<span class="chip ${who[0]}">${who[1]}</span>`;
+    $("#nextcmd").textContent = n.command;
+    $("#nextcmd").onclick = () => {
+      navigator.clipboard?.writeText(n.command);
+      $("#nextcmd").textContent = "copied";
+      setTimeout(() => $("#nextcmd").textContent = n.command, 900);
+    };
+  }
+
+  const open = (QUEUE.items||[]).filter(i => i.status === "open").length;
+  $("#nextqueue").innerHTML = open
+    ? `<span class="chip warn">${open} queued</span>`
+    : `<span style="font-size:11px;color:var(--faint)">queue empty</span>`;
+
+  const nav = $("#nav"); nav.innerHTML = "";
+  const views = [["pipeline","Pipeline",PLAN.rows.filter(r=>r.done).length+"/"+PLAN.rows.length],
+                 ["review","Review",""],["library","Library",""],
+                 ["inspector","Inspector",""],["queue","Queue",open||""]];
+  for (const [id,label,count] of views) {
+    const b = el("button","navbtn",label);
+    b.setAttribute("aria-current", VIEW.name===id ? "true":"false");
+    if (count) b.appendChild(el("span","n",String(count)));
+    b.onclick = () => go({name:id});
+    nav.appendChild(b);
+  }
+
+  const c = ENV.critics;
+  $("#critics").innerHTML =
+    `A &nbsp;${esc(c.slot_a.label||c.slot_a.id||"unset")} <span style="color:var(--faint)">${esc(c.slot_a.family||"")}</span><br>` +
+    `B &nbsp;${esc(c.slot_b.label||c.slot_b.id||"unset")} <span style="color:var(--faint)">${esc(c.slot_b.family||"")}</span><br>` +
+    (ENV.critic_rules_ok
+      ? `<span class="chip done" style="margin-top:4px;display:inline-block">rules hold</span>`
+      : `<span class="chip warn" style="margin-top:4px;display:inline-block">bench rule broken</span>`);
+}
+
+/* ---------- spine ---------- */
+function drawSpine() {
+  const sp = $("#spine"); sp.innerHTML = "";
+  const byKey = {};
+  for (const r of PLAN.rows) byKey[`${r.chapter}|${r.part}|${r.stage}`] = r;
+  const nx = PLAN.next;
+
+  const bookRow = el("button","srow");
+  bookRow.setAttribute("aria-current", VIEW.name==="book" ? "true":"false");
+  bookRow.appendChild(el("span","id","book"));
+  bookRow.appendChild(pips(["premise","genre","brainstorm","dossier","bible","style_card","outline"]
+    .map(s => byKey[`0||${s}`]), nx));
+  bookRow.onclick = () => go({name:"book"});
+  sp.appendChild(bookRow);
+
+  for (let ch = 1; ch <= ENV.chapters; ch++) {
+    for (const part of ["a","b"]) {
+      const row = el("button","srow");
+      const id = String(ch).padStart(2,"0") + part;
+      row.setAttribute("aria-current", VIEW.name==="half" && VIEW.unit===id ? "true":"false");
+      row.appendChild(el("span","id",id));
+      row.appendChild(pips(HALF_STAGES.map(s => byKey[`${ch}|${part}|${s}`]), nx));
+      row.onclick = () => go({name:"half", unit:id});
+      sp.appendChild(row);
+    }
+    const crow = el("button","srow");
+    const cid = String(ch).padStart(2,"0");
+    crow.setAttribute("aria-current", VIEW.name==="chapter" && VIEW.chapter===cid ? "true":"false");
+    crow.style.borderBottom = "1px solid var(--rule)";
+    crow.appendChild(el("span","id",cid));
+    crow.appendChild(pips(CH_STAGES.map(s => byKey[`${ch}||${s}`]), nx));
+    crow.onclick = () => go({name:"chapter", chapter:cid});
+    sp.appendChild(crow);
+  }
+}
+
+function pips(rows, nx) {
+  const wrap = el("span","pips");
+  for (const r of rows) {
+    const p = el("span","pip");
+    if (!r) { wrap.appendChild(p); continue; }
+    if (r.done) p.classList.add("done");
+    else if (r.queued) p.classList.add("queued");
+    else if (nx && nx.chapter===r.chapter && nx.part===r.part && nx.stage===r.stage)
+      p.classList.add("next");
+    p.title = `${r.label} — ${r.done?"done":r.queued?"queued":"pending"}`;
+    wrap.appendChild(p);
+  }
+  return wrap;
+}
+
+/* ---------- strip ---------- */
+function drawStrip() {
+  const run = PLAN.latest_run;
+  $("#runDot").className = "dot" + (run ? "" : " idle");
+  const esc8 = Object.entries(PLAN.escalations||{});
+  $("#runText").textContent = run
+    ? `run ${run}` + (esc8.length ? ` · escalated: ch ${esc8.map(([c,n])=>`${c}(${n})`).join(", ")}` : "")
+    : "no runs yet — nothing has been drafted";
+}
+
+/* ---------- views ---------- */
+async function drawView() {
+  const v = $("#view"), ctx = $("#ctx");
+  v.innerHTML = ""; ctx.innerHTML = "";
+  const f = {pipeline:viewPipeline, book:viewBook, half:viewHalf,
+             chapter:viewChapter, review:viewReview, library:viewLibrary,
+             inspector:viewInspector, queue:viewQueue}[VIEW.name] || viewPipeline;
+  try { await f(v, ctx); }
+  catch (x) { v.innerHTML = `<p class="empty">${esc(x.message)}</p>`; }
+}
+
+function head(title, where) { $("#vtitle").textContent = title; $("#vwhere").textContent = where || ""; }
+
+function viewPipeline(v, ctx) {
+  head("Pipeline", `${PLAN.progress.chapters} chapters · premise to manuscript`);
+  const t = el("table");
+  t.innerHTML = "<thead><tr><th>step</th><th>who</th><th>writes</th><th></th></tr></thead>";
+  const body = el("tbody");
+  const nx = PLAN.next;
+  for (const r of PLAN.rows) {
+    if (r.chapter > 2 && r.chapter !== 0) continue;   // first two chapters + book
+    const tr = el("tr");
+    const isNext = nx && nx.chapter===r.chapter && nx.part===r.part && nx.stage===r.stage;
+    tr.innerHTML =
+      `<td class="mono" style="${isNext?'font-weight:600':''}">${esc(r.label)}</td>` +
+      `<td><span class="chip ${r.human?'you':r.model?'model':'free'}">` +
+      `${r.human?'you':r.model?'model':'free'}</span></td>` +
+      `<td style="color:var(--muted)">${esc(r.writes)}</td>` +
+      `<td><span class="chip ${r.done?'done':'todo'}">${r.done?'done':r.queued?'queued':'—'}</span></td>`;
+    body.appendChild(tr);
+  }
+  t.appendChild(body); v.appendChild(t);
+  v.appendChild(el("p","empty",
+    "Showing the book-level stages and the first two chapters. The spine on the left reaches all " +
+    ENV.chapters + ". Every step marked free is answered by Python and costs nothing; " +
+    "a step marked model is run from a terminal through the Claude Code skill."));
+  ctxDoctor(ctx);
+}
+
+function viewBook(v, ctx) {
+  head("The book", "premise, genre, dossier, outline");
+  const has = ENV.has;
+  const t = el("table");
+  t.innerHTML = "<thead><tr><th>artefact</th><th>state</th></tr></thead>";
+  const b = el("tbody");
+  for (const [f, label] of [["premise.md","Premise"],["genre.json","Genre contract"],
+       ["brainstorm.md","Brainstorm"],["dossier.md","Dossier"],
+       ["style.json","Style card"],["outline.json","Outline"]]) {
+    const ok = has[f];
+    let note = ok ? "written" : "not yet";
+    if (f === "style.json" && ok) note = ENV.style_measured ? "measured from your prose" : "neutral — comps/ is empty";
+    b.appendChild(rowKV(label, note, ok && !(f==="style.json" && !ENV.style_measured)));
+  }
+  t.appendChild(b); v.appendChild(t);
+  if (ENV.style_measured === false) {
+    v.appendChild(el("p","empty",
+      "The style card is a neutral placeholder because comps/ holds no prose. " +
+      "Prose drafted against it will be competent and anonymous. Put 2,000+ words " +
+      "of your own writing in comps/ and run: storyos stage style_card"));
+  }
+  ctxDoctor(ctx);
+}
+
+function rowKV(k, val, ok) {
+  const tr = el("tr");
+  tr.innerHTML = `<td>${esc(k)}</td><td><span class="chip ${ok?'done':'todo'}">${esc(val)}</span></td>`;
+  return tr;
+}
+
+async function viewHalf(v, ctx) {
+  const d = await api("/api/unit?id=" + encodeURIComponent(VIEW.unit));
+  head("Half " + d.unit, d.predecessor ? `continues ${d.predecessor}` : "the book opens here");
+
+  if (d.text == null) {
+    v.appendChild(el("p","empty",
+      `Not drafted yet. This half follows ${d.predecessor || "nothing — it is the opening"}` +
+      (d.unit.endsWith("b") ? ", and will receive its own first half whole and verbatim." : ".")));
+  } else {
+    const band = d.band;
+    const inband = d.words >= band[0] && d.words <= band[1];
+    const bar = el("div"); bar.style.marginBottom = "14px";
+    bar.innerHTML = `<span class="chip ${inband?'done':'warn'}">${d.words.toLocaleString()} words</span> ` +
+      `<span style="font-size:11.5px;color:var(--muted)">target ${band[0].toLocaleString()}–${band[1].toLocaleString()}` +
+      (d.length_check ? ` · ${esc(d.length_check.verdict)}` : "") + `</span>`;
+    v.appendChild(bar);
+    const p = el("div","prose");
+    p.innerHTML = d.text.split(/\n\s*\n/).map(x => `<p>${esc(x.trim())}</p>`).join("");
+    v.appendChild(p);
+  }
+
+  ctx.appendChild(el("div","seclabel","BEATS"));
+  if (d.beats) {
+    if (d.beats.seam_intent) {
+      const si = el("div","card"); si.style.marginBottom = "10px";
+      si.innerHTML = `<div class="seclabel">HANDOFF</div>
+        <div style="font-size:11.5px;line-height:1.5">${esc(d.beats.seam_intent)}</div>`;
+      ctx.appendChild(si);
+    }
+    for (const b of d.beats.beats || []) {
+      const row = el("div","card"); row.style.marginBottom = "6px";
+      row.innerHTML = `<div style="font-size:12px">${esc(b.beat || b.text || "")}</div>` +
+        (b.weight ? `<div class="kv">weight ${b.weight}</div>` : "");
+      ctx.appendChild(row);
+    }
+  } else {
+    ctx.appendChild(el("p","empty","No beats yet. Run split_beats for this chapter."));
+  }
+  queueButton(ctx, d.unit, "draft", "Queue a draft of this half");
+}
+
+async function viewChapter(v, ctx) {
+  const d = await api("/api/chapter?n=" + encodeURIComponent(VIEW.chapter));
+  head("Chapter " + d.chapter,
+       d.versions.length ? `versions ${d.versions.map(n=>"v"+n).join(", ")}` : "not yet joined");
+
+  const text = d.committed || d.v1 || d.joined;
+  if (!text) {
+    v.appendChild(el("p","empty",
+      "Nothing joined yet. Both halves must be drafted, then: storyos stage join " + d.chapter));
+  } else {
+    if (d.seam) {
+      const s = d.seam;
+      const info = el("div"); info.style.marginBottom = "12px";
+      info.innerHTML = `<span class="chip ${d.seam_check && d.seam_check.ok ? 'done':'todo'}">seam at ¶${s.seam_paragraph}</span> ` +
+        `<span style="font-size:11.5px;color:var(--muted)">editable window ¶${s.window.first_paragraph}–¶${s.window.last_paragraph} · ` +
+        `${s.words.total.toLocaleString()} words</span>`;
+      v.appendChild(info);
+    }
+    const paras = text.split(/\n\s*\n/);
+    const seamAt = d.seam ? d.seam.seam_paragraph : -1;
+    const lo = d.seam ? d.seam.window.first_paragraph : -1;
+    const hi = d.seam ? d.seam.window.last_paragraph : -1;
+    const p = el("div","prose");
+    p.innerHTML = paras.map((x,i) => {
+      const inWin = i >= lo && i <= hi;
+      const style = inWin ? "background:var(--amber-dim);padding:2px 6px;border-radius:4px;" : "";
+      const mark = i === seamAt ? `<span class="chip warn" style="margin-right:6px">seam</span>` : "";
+      return `<p style="${style}">${mark}${esc(x.trim())}</p>`;
+    }).join("");
+    v.appendChild(p);
+  }
+
+  ctx.appendChild(el("div","seclabel","SEAM CHECK"));
+  if (d.seam_check) {
+    const ok = d.seam_check.ok;
+    const c = el("div","card");
+    c.innerHTML = ok
+      ? `<span class="chip done">clean</span><div class="kv">the repair stayed inside its window</div>`
+      : `<span class="chip warn">${d.seam_check.violations.length} violation(s)</span>` +
+        d.seam_check.violations.map(x =>
+          `<div class="kv"><b>${esc(x.kind)}</b> ¶${x.paragraph}: ${esc(x.detail)}</div>`).join("");
+    ctx.appendChild(c);
+  } else {
+    ctx.appendChild(el("p","empty","Not verified yet."));
+  }
+  if (d.escalations) {
+    const e = el("div","card"); e.style.marginTop = "10px";
+    e.innerHTML = `<span class="chip warn">escalated</span><div class="kv">${d.escalations} rewrite verdict(s) — the drafter is promoted for this chapter</div>`;
+    ctx.appendChild(e);
+  }
+  queueButton(ctx, d.chapter, "join", "Queue the join");
+}
+
+async function viewReview(v, ctx) {
+  head("Review", "two blind critics, reconciled by arithmetic");
+  let found = false;
+  for (let ch = 1; ch <= ENV.chapters; ch++) {
+    const id = String(ch).padStart(2,"0");
+    let d; try { d = await api("/api/chapter?n=" + id); } catch { continue; }
+    if (!d.reconciled) continue;
+    found = true;
+    const r = d.reconciled;
+    const box = el("div"); box.style.marginBottom = "22px";
+    box.innerHTML = `<h2 class="serif" style="font-size:15px;margin:0 0 4px">Chapter ${esc(r.chapter)}</h2>
+      <div class="mono" style="font-size:11px;color:var(--muted);margin-bottom:10px">${esc(r.summary)}</div>`;
+
+    for (const pair of r.confirmed || []) {
+      const f = pair[0];
+      box.appendChild(finding("confirmed","both reviewers",f));
+    }
+    (r.contested||[]).forEach((f,i) => {
+      const node = finding("contested", f.reviewer, f);
+      const row = el("div"); row.style.marginTop = "6px";
+      const a = el("button","btn", f.accepted ? "accepted" : "Accept");
+      const x = el("button","btn", f.accepted === false ? "dismissed" : "Dismiss");
+      a.onclick = async () => { await decide(r.chapter, i, true); drawView(); };
+      x.onclick = async () => { await decide(r.chapter, i, false); drawView(); };
+      row.append(a, document.createTextNode(" "), x);
+      node.appendChild(row);
+      box.appendChild(node);
+    });
+    for (const f of r.hallucinated || []) {
+      const node = finding("gone", f.reviewer, f);
+      node.appendChild(el("div","kv",
+        `discarded: quote not in the chapter (${Math.round((f.match_ratio||0)*100)}% match)`));
+      box.appendChild(node);
+    }
+    v.appendChild(box);
+  }
+  if (!found) v.appendChild(el("p","empty",
+    "No chapter has been reviewed yet. Reviews run from a terminal through the skill; " +
+    "reconciliation afterwards is free Python: storyos stage reconcile 01"));
+
+  ctx.appendChild(el("div","seclabel","HOW THIS STAYS HONEST"));
+  const c = el("div","card");
+  c.innerHTML = `<div style="font-size:11.5px;line-height:1.55;color:var(--muted)">
+    Neither critic is a Claude model, and the two never share a family — one lineage
+    shares blind spots. Each must name exactly three weakest paragraphs, with no
+    rating scale, and every claim carries a quote that Python matches against the
+    chapter. A quote that is not there costs the critic its finding.
+    <br><br>No third model adjudicates. Where they disagree, you do.</div>`;
+  ctx.appendChild(c);
+}
+
+function finding(kind, who, f) {
+  const n = el("div","finding " + kind);
+  n.innerHTML =
+    `<div style="display:flex;gap:8px;align-items:baseline">
+       <span class="mono" style="font-size:9.5px;color:var(--faint)">${esc(who)}</span>
+       <q style="flex:1">${esc((f.quote||"").slice(0,180))}</q></div>` +
+    (f.why_it_fails ? `<div class="kv"><b>fails:</b> ${esc(f.why_it_fails)}</div>` : "") +
+    (f.reaches_for ? `<div class="kv"><b>reaching for:</b> ${esc(f.reaches_for)}</div>` : "") +
+    (f.works_here && f.works_here !== "nothing"
+      ? `<div class="kv"><b>keep:</b> ${esc(f.works_here)}</div>` : "");
+  return n;
+}
+
+async function decide(chapter, index, accepted) {
+  try {
+    await api("/api/decide", {method:"POST",
+      headers:{"Content-Type":"application/json"},
+      body: JSON.stringify({chapter, index, accepted})});
+  } catch (x) { alert(x.message); }
+}
+
+async function viewLibrary(v, ctx) {
+  head("Library", "craft knowledge you can pin into a draft");
+  v.appendChild(el("p","empty",
+    "Notes live in library/notes/ as Markdown. Drop essays, lectures and craft books " +
+    "there — or convert a web page to Markdown and save it there — and they become " +
+    "searchable from the field above and pinnable into a drafting context. " +
+    "Ingestion from PDF, DOCX and Google Docs is not built yet; Markdown and plain " +
+    "text work today."));
+  ctx.appendChild(el("div","seclabel","PINS"));
+  ctx.appendChild(el("p","empty","No pins yet."));
+}
+
+async function viewInspector(v, ctx) {
+  const d = await api("/api/inspector");
+  head("Prompt inspector", `${d.calls} call(s) recorded`);
+
+  v.appendChild(el("div","seclabel","WHAT YOUR OWN LOG SAYS"));
+  for (const s of d.suggestions) {
+    const c = el("div","card"); c.style.marginBottom = "8px";
+    c.innerHTML = `<div style="font-size:12.5px;line-height:1.55">${esc(s.text)}</div>`;
+    v.appendChild(c);
+  }
+
+  if (d.drop_rates.length) {
+    v.appendChild(el("div","seclabel","SEGMENTS DROPPED TO FIT THE BUDGET"));
+    const t = el("table");
+    t.innerHTML = "<thead><tr><th>segment</th><th>calls</th><th>dropped</th><th>rate</th></tr></thead>";
+    const b = el("tbody");
+    for (const r of d.drop_rates) {
+      b.appendChild(Object.assign(el("tr"), {innerHTML:
+        `<td>${esc(r.label)}</td><td class="mono">${r.calls}</td>` +
+        `<td class="mono">${r.dropped}</td>` +
+        `<td><span class="chip ${r.rate>=0.3?'warn':'todo'}">${Math.round(r.rate*100)}%</span></td>`}));
+    }
+    t.appendChild(b); v.appendChild(t);
+  }
+
+  if (d.verbatim_vs_redrafts.length) {
+    v.appendChild(el("div","seclabel","REDRAFTS vs HOW MUCH VERBATIM PROSE WAS IN THE PROMPT"));
+    const max = Math.max(...d.verbatim_vs_redrafts.map(b => b.mean_redrafts), 0.01);
+    for (const b of d.verbatim_vs_redrafts) {
+      const row = el("div"); row.style.margin = "0 0 8px";
+      row.innerHTML =
+        `<div style="display:flex;gap:8px;font-size:11.5px;margin-bottom:3px">
+           <span class="mono">${esc(b.verbatim_share)}</span>
+           <span style="color:var(--muted)">${b.calls} draft(s)</span>
+           <span style="margin-left:auto" class="mono">${b.mean_redrafts} redrafts</span></div>
+         <div class="bar"><i style="width:${Math.round(b.mean_redrafts/max*100)}%;background:var(--clay)"></i></div>`;
+      v.appendChild(row);
+    }
+  }
+
+  ctx.appendChild(el("div","seclabel","WHY THIS PAGE EXISTS"));
+  const c = el("div","card");
+  c.innerHTML = `<div style="font-size:11.5px;line-height:1.55;color:var(--muted)">
+    A bad half is almost always a bad context. Every prompt is kept on disk as a
+    labelled segment list, so when a half comes out wrong you can see which segment
+    caused it instead of guessing.
+    <br><br>Every number here is arithmetic over your own event log. No model is
+    asked to characterise your habits, because it would produce something plausible
+    and unfalsifiable.</div>`;
+  ctx.appendChild(c);
+}
+
+async function viewQueue(v, ctx) {
+  head("Queue", "what the page asks for, the terminal performs");
+  const items = QUEUE.items || [];
+  if (!items.length) {
+    v.appendChild(el("p","empty",
+      "Nothing queued. The page cannot call a model — it appends a request here and " +
+      "a Claude Code turn drains it. Queue something from a half or a chapter, then " +
+      "run: /storyos drain"));
+  } else {
+    const t = el("table");
+    t.innerHTML = "<thead><tr><th>unit</th><th>stage</th><th>status</th><th>note</th></tr></thead>";
+    const b = el("tbody");
+    for (const i of items) {
+      b.appendChild(Object.assign(el("tr"), {innerHTML:
+        `<td class="mono">${esc(i.unit)}</td><td>${esc(i.stage)}</td>` +
+        `<td><span class="chip ${i.status==='done'?'done':i.status==='open'?'warn':'todo'}">${esc(i.status)}</span></td>` +
+        `<td style="color:var(--muted)">${esc(i.note||i.reason||"")}</td>`}));
+    }
+    t.appendChild(b); v.appendChild(t);
+  }
+  ctxDoctor(ctx);
+}
+
+function queueButton(ctx, unit, stage, label) {
+  const wrap = el("div"); wrap.style.marginTop = "14px";
+  const b = el("button","btn primary", label);
+  b.onclick = async () => {
+    b.disabled = true;
+    try {
+      await api("/api/queue", {method:"POST",
+        headers:{"Content-Type":"application/json"},
+        body: JSON.stringify({unit, stage})});
+      b.textContent = "queued";
+    } catch (x) {
+      const extra = x.blocked_by ? "\n\nblocked by: " + x.blocked_by.join(", ") : "";
+      const force = confirm(`${x.error || x.message}${extra}\n\nQueue it anyway?`);
+      if (force) {
+        try {
+          await api("/api/queue", {method:"POST",
+            headers:{"Content-Type":"application/json"},
+            body: JSON.stringify({unit, stage, force:true})});
+          b.textContent = "queued (forced)";
+        } catch (y) { alert(y.error || y.message); b.disabled = false; return; }
+      } else { b.disabled = false; return; }
+    }
+    setTimeout(refresh, 300);
+  };
+  wrap.appendChild(b);
+  ctx.appendChild(wrap);
+}
+
+function ctxDoctor(ctx) {
+  ctx.appendChild(el("div","seclabel","READINESS"));
+  const c = el("div","card");
+  const keys = ENV.keys.length ? ENV.keys.join(", ") : "none — the drafting side needs none";
+  c.innerHTML =
+    `<div class="kv"><b>critics</b> ${ENV.critic_rules_ok ? "rules hold" : "RULE BROKEN"}</div>` +
+    `<div class="kv"><b>style card</b> ${ENV.style_measured === null ? "not written" :
+       ENV.style_measured ? "measured" : "neutral placeholder"}</div>` +
+    `<div class="kv"><b>keys in .env</b> ${esc(keys)}</div>`;
+  ctx.appendChild(c);
+}
+
+/* ---------- search ---------- */
+function debounce(fn, ms) { let t; return (...a) => { clearTimeout(t); t = setTimeout(() => fn(...a), ms); }; }
+
+async function search() {
+  const q = $("#q").value.trim();
+  const box = $("#results");
+  if (q.length < 3) { box.hidden = true; return; }
+  let d; try { d = await api("/api/search?q=" + encodeURIComponent(q)); }
+  catch { box.hidden = true; return; }
+
+  box.innerHTML = "";
+  if (!d.results.length) {
+    box.appendChild(el("div","hit","no matches"));
+  } else {
+    for (const r of d.results) {
+      const n = el("div","hit");
+      n.innerHTML = `<div style="display:flex;gap:7px;align-items:baseline">
+          <span class="chip todo">${esc(r.kind)}</span>
+          <span class="mono" style="font-size:11px">${esc(r.label)}</span></div>
+        <div class="snip">…${esc(r.snippet)}…</div>`;
+      n.onclick = () => {
+        box.hidden = true;
+        if (r.kind === "half") go({name:"half", unit:r.label.replace("ch","")});
+        else if (r.kind === "prose") go({name:"chapter", chapter:r.label.replace("ch","")});
+        else if (r.kind === "finding") go({name:"review"});
+        else if (r.kind === "library") go({name:"library"});
+      };
+      box.appendChild(n);
+    }
+    if (d.total > d.results.length) {
+      box.appendChild(el("div","hit",`${d.total - d.results.length} more…`));
+    }
+  }
+  box.hidden = false;
+}
+
+boot();
+</script>
+</body>
+</html>

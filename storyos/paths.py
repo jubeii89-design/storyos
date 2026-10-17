@@ -144,6 +144,14 @@ class Env:
     @property
     def comps_dir(self) -> Path: return self.root / "comps"
 
+    @property
+    def queue(self) -> Path:
+        """What the UI asks for and the terminal drains. Append-only."""
+        return self.root / "queue.jsonl"
+
+    @property
+    def locks_dir(self) -> Path: return self.root / "queue.locks"
+
     # derived -- rebuilt from deltas/ and chapters/, safe to delete
     @property
     def state(self) -> Path: return self.root / "state.json"

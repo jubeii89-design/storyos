@@ -15,10 +15,12 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+import time
 from pathlib import Path
 
 from . import stages, units
-from .events import completed_all, new_run_id, review_failures, run_totals
+from .events import (EventLog, completed_all, new_run_id, review_failures,
+                     run_totals)
 from .paths import Env, EnvNotFound
 from .project import DEFAULT_CHAPTERS, init_env
 
@@ -169,10 +171,23 @@ def cmd_stage(args) -> int:
                  f"`storyos stage {st.name} "
                  f"{'07a' if st.scope == 'half' else '07'}`")
 
+    # Every stage must log, or it did not happen. Resume is derived by
+    # replaying events.jsonl, so a stage that writes its file without an event
+    # is invisible: status never advances and the stage is re-run forever.
+    # This is the one place a Python stage touches the log, and it is the
+    # runner's job rather than each stage's, so no stage can forget.
     run_id = env.latest_run() or new_run_id()
+    log = EventLog.open(env.root, run_id)
+    chapter, part = units.parse(args.unit) if args.unit else (0, "")
+    started = time.monotonic()
+    log.stage_start(chapter, st.name, model="none", provider="python",
+                    prompt_report={}, part=part)
     try:
         result = fn(env, args.unit, run_id)
     except (FileNotFoundError, ValueError, units.BadUnit) as x:
+        log.stage_end(chapter, st.name, False, part=part, error=str(x),
+                      latency_s=time.monotonic() - started)
+        log.close()
         sys.exit(f"{c('failed', RED)}: {x}")
 
     # A stage may return a plain list (succeeded) or (lines, ok). A check that
@@ -181,6 +196,10 @@ def cmd_stage(args) -> int:
     ok = True
     if isinstance(result, tuple):
         result, ok = result
+
+    log.stage_end(chapter, st.name, ok, part=part,
+                  latency_s=round(time.monotonic() - started, 2))
+    log.close()
 
     print(f"{c('ok' if ok else 'FAILED', GREEN if ok else RED)} "
           f"{st.name} {args.unit or ''}".rstrip())
@@ -429,7 +448,19 @@ def build_parser() -> argparse.ArgumentParser:
     d = sub.add_parser("doctor", help="what is reachable, and which bench rules hold")
     d.set_defaults(fn=cmd_doctor)
 
+    u = sub.add_parser("ui", help="serve the local page (reads and writes files only)")
+    u.add_argument("--port", type=int, default=8730)
+    u.add_argument("--open", action="store_true", help="open a browser")
+    u.set_defaults(fn=cmd_ui)
+
     return p
+
+
+def cmd_ui(args) -> int:
+    from .ui.server import serve
+    env = _env(args)
+    serve(str(env.root), port=args.port, open_browser=args.open)
+    return 0
 
 
 def main(argv: list[str] | None = None) -> int:
