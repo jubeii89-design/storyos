@@ -137,6 +137,7 @@ FREE_STAGES = {
     "context_pack":   lambda env, unit, run: _pack(env, unit, run),
     "length_gate":    lambda env, unit, run: _length(env, unit),
     "join":           lambda env, unit, run: _join(env, unit),
+    "seam_check":     lambda env, unit, run: _seam_check(env, unit),
     "seam_verify":    lambda env, unit, run: _seam_verify(env, unit),
     "state_rebuild":  lambda env, unit, run: _state(env),
     "chapter_commit": lambda env, unit, run: _commit(env, unit),
@@ -262,6 +263,32 @@ def _join(env, unit):
             f"editable window: paragraphs {s['window']['first_paragraph']}"
             f"-{s['window']['last_paragraph']}",
             f"{s['words']['total']:,} words, {len(s['paragraphs'])} paragraphs hashed"]
+
+
+def _seam_check(env, unit):
+    """The four defects two independently drafted halves make at their join."""
+    from .checks.seam import check_seam
+    from . import units as U
+    ch = U.parse(unit)[0]
+    a, b = env.part(U.fmt(ch, "a")), env.part(U.fmt(ch, "b"))
+    missing = [p.name for p in (a, b) if not p.is_file()]
+    if missing:
+        raise FileNotFoundError(f"both halves must exist: missing {', '.join(missing)}")
+
+    found = check_seam(a.read_text(), b.read_text())
+    errors = [f for f in found if f.severity == "error"]
+    if not found:
+        return ["clean — no repeated phrasing, restated setting, repeated "
+                "gesture or false ending at the join"], True
+
+    lines = []
+    for f in found:
+        tag = c(f.severity.upper(), RED if f.severity == "error" else AMBER)
+        lines.append(f"{tag:14} {f.code:17} {f.message}")
+        lines.append(f"{'':14} {f.evidence!r}")
+    lines.append("")
+    lines.append("these are the seam stage's work list; it may edit only the window")
+    return lines, not errors
 
 
 def _seam_verify(env, unit):
