@@ -40,7 +40,8 @@ PAGE_CSS = """
 /* A title page carries no furniture, and neither does a chapter opening. */
 @page :first { @top-center { content: none } @bottom-center { content: none } }
 html { font-size: 11.5pt; }
-body { font-family: "Newsreader", Georgia, "Times New Roman", serif;
+body { font-family: "Iowan Old Style", Palatino, Georgia,
+                    "Times New Roman", serif;
        line-height: 1.55; text-align: justify; hyphens: auto; margin: 0;
        /* Three lines, so no paragraph is stranded alone across a page turn. */
        orphans: 3; widows: 3; }

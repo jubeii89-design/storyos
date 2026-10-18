@@ -4,7 +4,9 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Story OS</title>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;0,6..72,600;1,6..72,400&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<!-- No webfont CDN. Opening your own notebook should not tell anyone you
+     opened it, and the page has to work on a train. These stacks pick the
+     best serif and UI face already on the machine. -->
 <style>
   :root {
     --ground:#FAF8F3; --panel:#FFFFFF; --ink:#1A1815; --muted:#6B6459;
@@ -36,12 +38,15 @@
   * { box-sizing:border-box; }
   html,body { margin:0; height:100%; }
   body { background:var(--ground); color:var(--ink);
-         font:14px/1.5 "IBM Plex Sans",system-ui,sans-serif; overflow:hidden; }
+         font:14px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,
+              "Helvetica Neue",Arial,sans-serif; overflow:hidden; }
   button,input,select { font:inherit; color:inherit; }
   button { cursor:pointer; }
   a { color:var(--clay); }
-  .mono { font-family:"IBM Plex Mono",monospace; }
-  .serif { font-family:"Newsreader",Georgia,serif; }
+  .mono { font-family:ui-monospace,SFMono-Regular,"SF Mono",Menlo,Consolas,
+                      "Liberation Mono",monospace; }
+  .serif { font-family:"Iowan Old Style","Palatino Linotype",Palatino,
+                       Georgia,"Times New Roman",serif; }
 
   #app { display:flex; flex-direction:column; height:100%; }
   #body { flex:1; display:flex; min-height:0; }
@@ -51,8 +56,8 @@
           border-right:1px solid var(--rail-rule); padding:14px 12px;
           display:flex; flex-direction:column; gap:14px; overflow-y:auto; }
   .brand { display:flex; align-items:baseline; gap:6px; }
-  .brand b { font-family:"Newsreader",serif; font-size:17px; font-weight:600; }
-  .brand span { font-family:"IBM Plex Mono",monospace; font-size:9.5px; color:var(--faint); }
+  .brand b { font-family:"Iowan Old Style",Georgia,serif; font-size:17px; font-weight:600; }
+  .brand span { font-family:ui-monospace,Menlo,Consolas,monospace; font-size:9.5px; color:var(--faint); }
   .seclabel { font-size:9.5px; font-weight:600; letter-spacing:.08em;
               color:var(--faint); margin-bottom:6px; }
   .navbtn { display:flex; align-items:center; gap:8px; width:100%;
@@ -61,11 +66,11 @@
   .navbtn:hover { background:var(--panel); }
   .navbtn[aria-current="true"] { background:var(--panel); border-color:var(--clay-rule);
             color:var(--ink); font-weight:600; }
-  .navbtn .n { margin-left:auto; font-family:"IBM Plex Mono",monospace;
+  .navbtn .n { margin-left:auto; font-family:ui-monospace,Menlo,Consolas,monospace;
                font-size:10px; color:var(--faint); }
   .card { background:var(--panel); border:1px solid var(--rule);
           border-radius:8px; padding:10px 11px; }
-  .nextcmd { font-family:"IBM Plex Mono",monospace; font-size:10.5px;
+  .nextcmd { font-family:ui-monospace,Menlo,Consolas,monospace; font-size:10.5px;
              background:var(--ground); border:1px solid var(--rule);
              border-radius:5px; padding:6px 7px; margin-top:6px;
              word-break:break-all; cursor:copy; }
@@ -79,7 +84,7 @@
           font-size:11.5px; text-align:left; }
   .srow:hover { background:var(--ground); }
   .srow[aria-current="true"] { border-color:var(--clay-rule); background:var(--clay-dim); }
-  .srow .id { font-family:"IBM Plex Mono",monospace; font-size:10.5px;
+  .srow .id { font-family:ui-monospace,Menlo,Consolas,monospace; font-size:10.5px;
               width:30px; flex:none; color:var(--muted); }
   .pips { display:flex; gap:2px; margin-left:auto; }
   .pip { width:6px; height:6px; border-radius:50%; background:var(--rule); }
@@ -92,10 +97,10 @@
           background:var(--panel); }
   #crumb { flex:none; padding:10px 20px; border-bottom:1px solid var(--rule);
            display:flex; align-items:center; gap:10px; background:var(--ground); }
-  #crumb h1 { margin:0; font-family:"Newsreader",serif; font-size:16px; font-weight:600; }
+  #crumb h1 { margin:0; font-family:"Iowan Old Style",Georgia,serif; font-size:16px; font-weight:600; }
   #crumb .where { font-size:11.5px; color:var(--faint); }
   #view { flex:1; overflow-y:auto; padding:18px 20px; }
-  .prose { font-family:"Newsreader",Georgia,serif; font-size:16px; line-height:1.68;
+  .prose { font-family:"Iowan Old Style",Georgia,serif; font-size:16px; line-height:1.68;
            max-width:34em; }
   .prose p { margin:0 0 1em; }
   .empty { color:var(--faint); font-size:13px; max-width:46em; line-height:1.6; }
@@ -133,7 +138,7 @@
   .finding.confirmed { border-color:var(--teal-rule); background:var(--teal-dim); }
   .finding.contested { border-color:var(--amber-rule); background:var(--amber-dim); }
   .finding.gone { border-color:var(--rule); opacity:.6; }
-  .finding q { font-family:"Newsreader",serif; font-style:italic; font-size:13.5px; }
+  .finding q { font-family:"Iowan Old Style",Georgia,serif; font-style:italic; font-size:13.5px; }
   .kv { font-size:11.5px; color:var(--muted); margin-top:4px; }
   .kv b { color:var(--ink); font-weight:600; }
   #searchwrap { position:relative; margin-left:auto; }
