@@ -214,9 +214,10 @@ def _style(env):
     card = run(env, force=True)
     src = card["source"]
     if not src["measured"]:
-        return [c("neutral card written — comps/ is empty", AMBER),
-                "prose drafted against this will be competent and anonymous",
-                f"put 2,000+ words of your own prose in {env.comps_dir}"]
+        return [c("no style card — comps/ is empty", AMBER),
+                "Story OS will not invent targets it cannot measure, so drafts",
+                "will carry no style constraint at all until you give it prose.",
+                f"put 2,000+ words of your own writing in {env.comps_dir}"]
     out = [f"measured {card['words']:,} words from {len(src['files'])} file(s)",
            f"sentences: mean {card['sentence_len']['mean']}, "
            f"stdev {card['sentence_len']['stdev']}, p90 {card['sentence_len']['p90']}",

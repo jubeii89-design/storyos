@@ -179,28 +179,25 @@ def from_comps(comps_dir: Path) -> dict:
     return card
 
 
-def neutral_card(note: str) -> dict:
-    """A deliberately unopinionated card, used only when `comps/` is empty.
+def unmeasured_card(note: str) -> dict:
+    """A card with no targets, because nothing has been measured.
 
-    These are mid-range values for contemporary commercial fiction. They exist
-    so the pipeline is not blocked, and they are marked `measured: false` so
-    nothing downstream can mistake them for the writer's own numbers. Prose
-    drafted against this card will be competent and anonymous -- which is the
-    honest consequence of having nothing to measure, not a defect to hide.
+    This used to invent sixteen numbers and call them "mid-range values for
+    contemporary commercial fiction". There is no such corpus behind them --
+    they were made up, and then handed to the model under the heading
+    "Measured style targets", which is a lie told to the one party that cannot
+    check it.
+
+    An absent target is honest and a fabricated one is not, and the difference
+    shows up in the prose: invented numbers push every draft toward a style
+    nobody chose, while no numbers leave the model's own judgement in place
+    and leave the writer a visible gap to fill.
+
+    `build_prose_prompt` omits the style segment entirely when `measured` is
+    false, so nothing downstream can mistake this for data.
     """
     return {
         "words": 0, "sentences": 0, "paragraphs": 0,
-        "sentence_len": {"mean": 14.0, "median": 12, "stdev": 8.5,
-                         "p10": 4.0, "p90": 27.0, "max": 45,
-                         "pct_under_6": 18.0, "pct_6_to_20": 58.0, "pct_over_30": 8.0},
-        "paragraph": {"mean_sentences": 3.4, "mean_words": 48.0,
-                      "pct_single_sentence": 22.0},
-        "dialogue": {"pct_of_words": 28.0, "pct_paragraphs_with_speech": 34.0},
-        "habits": {"adverbs_per_1k": 9.0, "commas_per_sentence": 1.1,
-                   "semicolons_per_1k": 0.4, "emdash_per_1k": 2.2,
-                   "colon_per_1k": 0.6,
-                   "pct_sentences_opening_conjunction": 7.0,
-                   "type_token_ratio_2k": 42.0},
         "source": {"files": [], "measured": False, "sufficient": False,
                    "warning": note},
     }
@@ -231,7 +228,7 @@ def run(env, *, force: bool = False) -> dict:
     try:
         card = from_comps(env.comps_dir)
     except FileNotFoundError as x:
-        card = neutral_card(str(x))
+        card = unmeasured_card(str(x))
 
     env.style.write_text(json.dumps(card, indent=2) + "\n")
     return card

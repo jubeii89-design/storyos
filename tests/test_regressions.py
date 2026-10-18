@@ -619,7 +619,45 @@ def test_a_library_note_does_not_record_an_absolute_path():
     assert "/home/" not in raw and "/Users/" not in raw
 
 
-# -- 13. the pipeline as data ---------------------------------------------
+# -- 13. not guessing -----------------------------------------------------
+
+def test_an_unmeasured_style_card_invents_no_targets():
+    """neutral_card() used to return sixteen numbers described as "mid-range
+    values for contemporary commercial fiction". No such corpus was consulted;
+    they were made up, then handed to the model under the heading "Measured
+    style targets" -- a claim the one party who cannot check it was asked to
+    write toward."""
+    from storyos.style import unmeasured_card
+    card = unmeasured_card("comps/ is empty")
+    numbers = [v for group in card.values() if isinstance(group, dict)
+               for v in group.values()
+               if isinstance(v, (int, float)) and not isinstance(v, bool)]
+    assert not numbers, f"invented targets: {numbers}"
+    assert card["source"]["measured"] is False
+
+
+def test_the_style_segment_tracks_the_data_not_a_flag():
+    """The prompt must carry style targets when they were measured and none
+    when they were not. An earlier guard keyed on source.measured, which
+    measure() never sets, so a genuinely measured card was dropped too --
+    the check asked a label about the data instead of the data."""
+    from storyos.context import build_prose_prompt
+    from storyos.style import measure, unmeasured_card
+
+    def has_style(card):
+        p = build_prose_prompt(rules="R" * 200, style_card=card, world_facts={},
+                               character_rows=[], beats=[{"b": 1}],
+                               prior_chapters=[], chapter_no=1, part="a")
+        return any("style" in s.label.lower() for s in p.segments)
+
+    assert not has_style(unmeasured_card("empty"))
+    assert has_style(measure(
+        'She walked. He did not. The gallery was long, and cold, and it '
+        'smelled of coolant; she had never minded that. "You logged it," '
+        'she said. "I logged a mass."'))
+
+
+# -- 14. the pipeline as data ---------------------------------------------
 
 def test_every_model_stage_has_a_bench_row():
     """A stage with no bench row printed "?" for its model, which once hid a

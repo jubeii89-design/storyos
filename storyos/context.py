@@ -230,12 +230,21 @@ def build_prose_prompt(
     """
     p = Prompt(stage=stage)
     p.system("Operating rules", rules, fidelity=Fidelity.RULES, source="prompts/rules.md")
-    p.system(
-        "Measured style targets",
-        json.dumps(style_card, indent=1),
-        fidelity=Fidelity.RULES,
-        source="style.json",
-    )
+    # Only when there is something to report. A card built from no samples
+    # carries no targets, and a segment headed "Measured style targets" that
+    # holds invented numbers is worse than no segment: the model cannot tell
+    # the difference and will write toward a style nobody chose.
+    # Keyed on the targets themselves, not on a flag claiming they exist. An
+    # earlier version checked source.measured, which `measure()` never sets --
+    # so a genuinely measured card was dropped too. Ask the data, not a label
+    # about the data.
+    if (style_card or {}).get("sentence_len"):
+        p.system(
+            "Measured style targets",
+            json.dumps(style_card, indent=1),
+            fidelity=Fidelity.RULES,
+            source="style.json",
+        )
 
     p.user_json("World facts", world_facts, source="state.json#world", priority=85)
     p.user_json(
