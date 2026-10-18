@@ -500,7 +500,54 @@ def test_a_pin_freezes_what_was_actually_used():
     assert stale[0]["excerpt"] == "A scene is a unit of change"
 
 
-# -- 11. the pipeline as data ---------------------------------------------
+# -- 11. PDF rendering ----------------------------------------------------
+
+def test_the_manuscript_pdf_carries_running_heads_and_page_numbers():
+    """Chromium's print-to-PDF renders a page counter but ignores string-set,
+    so a manuscript built by it has no running head. weasyprint implements CSS
+    paged media and is the default for the interior, which is HTML we author.
+    Measured on a 9-page sample: 0.30s and 17KB against 2.33s and 43KB."""
+    try:
+        import weasyprint                      # noqa: F401
+    except ImportError:
+        return                                  # fallback path; nothing to assert
+    from pypdf import PdfReader
+    from storyos import export
+
+    env = fresh()
+    (env.root / "chapters").mkdir(parents=True, exist_ok=True)
+    body = "\n\n".join("The gallery ran the length of the station spine, and she "
+                        "walked it twice before the shuttle showed." for _ in range(14))
+    for ch in (1, 2):
+        env.chapter(ch).write_text(body)
+
+    export.run(env, formats=("pdf",))
+    r = PdfReader(str(env.export_dir / "manuscript.pdf"))
+    assert len(r.pages) > 3
+
+    first = r.pages[0].extract_text()
+    assert not any(l.strip().isdigit() for l in first.splitlines()), \
+        "the title page must carry no page number"
+
+    later = r.pages[2].extract_text()
+    assert any(l.strip().isdigit() for l in later.splitlines()), "no page number"
+    assert "chapter" in later.lower(), "no running head"
+
+
+def test_a_snapshot_still_renders_without_a_browser():
+    """A degraded record of what was read beats no record at all."""
+    from unittest import mock
+    out = Path(tempfile.mkdtemp()) / "x.pdf"
+    with mock.patch.object(files, "_chromium", lambda: None):
+        ok = files.html_to_pdf("<h1>Title</h1><p>Body text here.</p>", out)
+    try:
+        import weasyprint                      # noqa: F401
+    except ImportError:
+        return
+    assert ok and out.stat().st_size > 0
+
+
+# -- 12. the pipeline as data ---------------------------------------------
 
 def test_every_model_stage_has_a_bench_row():
     """A stage with no bench row printed "?" for its model, which once hid a

@@ -14,7 +14,7 @@ requires-python = ">=3.11"
 dependencies = []
 
 [project.optional-dependencies]
-export = ["pypandoc-binary>=1.13"]
+export = ["pypandoc-binary>=1.13", "weasyprint>=60"]
 library = ["pypdf>=4", "python-docx>=1.1", "trafilatura>=1.8",
            "markdownify>=0.12", "cffi>=1.16"]
 

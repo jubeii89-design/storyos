@@ -222,7 +222,21 @@ def html_to_pdf(html: str, out: Path, *, base_url: str = "") -> bool:
 
     chrome = _chromium()
     if chrome is None:
-        return False
+        # weasyprint cannot run scripts and will not fetch most of a modern
+        # page's assets, so the snapshot is degraded -- but a degraded record
+        # of what was read beats no record at all. Chromium stays the default
+        # here precisely because a web page is not ours to control, which is
+        # the opposite of the manuscript interior.
+        try:
+            import weasyprint
+        except ImportError:
+            return False
+        try:
+            out.parent.mkdir(parents=True, exist_ok=True)
+            weasyprint.HTML(string=html, base_url=base_url or None).write_pdf(str(out))
+            return out.is_file() and out.stat().st_size > 0
+        except Exception:
+            return False
 
     with tempfile.TemporaryDirectory() as tmp:
         src = Path(tmp) / "page.html"
