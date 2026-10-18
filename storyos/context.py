@@ -146,7 +146,16 @@ class Prompt:
         return self
 
     def fit(self, budget_tokens: int) -> "Prompt":
-        """Drop lowest-priority segments until under budget.
+        """Drop lowest-priority segments until under budget, but never all.
+
+        The loop drops user segments while the total is over budget, and the
+        total includes system segments it cannot touch -- so a rules file large
+        enough on its own produced a draft prompt with no beats and no first
+        half, reporting only "dropped N segment(s)". A prompt that has lost
+        every instruction about what to write is not a smaller prompt, it is a
+        different and useless one, so the highest-priority user segment is kept
+        whatever the arithmetic says and the caller is told the budget is wrong.
+        
 
         Drops whole segments and records them, so the inspector can show you
         what was cut. Never truncates mid-segment: half a character ledger is
@@ -156,7 +165,7 @@ class Prompt:
             self.user_segments,
             key=lambda s: (s.priority, -s.tokens),
         )
-        while self.tokens > budget_tokens and order:
+        while self.tokens > budget_tokens and len(self.user_segments) > 1:
             victim = order.pop(0)
             self.user_segments.remove(victim)
             self.dropped.append(victim)

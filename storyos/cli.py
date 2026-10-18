@@ -172,6 +172,17 @@ def cmd_stage(args) -> int:
         sys.exit(f"{c('not built yet', AMBER)}: {st.name} is free but unimplemented.\n"
                  f"  It will write: {st.writes}")
 
+    # A chapter stage given "07a" parsed the chapter and did the work, but
+    # logged the key (7,"a",stage) where the plan expects (7,"",stage). The
+    # work happened and stayed invisible, so status asked for it forever and
+    # every re-run repeated it. The half direction was already guarded by
+    # env.part(); this guards the other one.
+    if st.scope == "chapter" and args.unit and units.parse(args.unit)[1]:
+        sys.exit(f"{c('error', RED)}: {st.name} works on a whole chapter. "
+                 f"Use {units.fmt(units.parse(args.unit)[0])}, not {args.unit}.")
+    if st.scope == "book" and args.unit:
+        sys.exit(f"{c('error', RED)}: {st.name} is a book-level stage and takes no unit.")
+
     if st.scope in ("half", "chapter") and not args.unit:
         sys.exit(f"{c('error', RED)}: {st.name} needs a unit, e.g. "
                  f"`storyos stage {st.name} "
@@ -190,11 +201,16 @@ def cmd_stage(args) -> int:
                     prompt_report={}, part=part)
     try:
         result = fn(env, args.unit, run_id)
-    except (FileNotFoundError, ValueError, units.BadUnit) as x:
-        log.stage_end(chapter, st.name, False, part=part, error=str(x),
+    except BaseException as x:
+        # Anything at all, including KeyboardInterrupt. A stage that dies
+        # without a stage_end is invisible to resume and will be re-run
+        # forever, so the log is closed on every path out of here.
+        log.stage_end(chapter, st.name, False, part=part, error=str(x) or type(x).__name__,
                       latency_s=time.monotonic() - started)
         log.close()
-        sys.exit(f"{c('failed', RED)}: {x}")
+        if isinstance(x, (FileNotFoundError, ValueError, units.BadUnit, KeyError)):
+            sys.exit(f"{c('failed', RED)}: {x}")
+        raise
 
     # A stage may return a plain list (succeeded) or (lines, ok). A check that
     # reports a violation must exit nonzero: printing "ok" above a violation

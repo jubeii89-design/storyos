@@ -703,7 +703,124 @@ def test_status_reads_the_configured_escalation_threshold():
         assert got == threshold
 
 
-# -- 14. the pipeline as data ---------------------------------------------
+# -- 14. the bug hunt -----------------------------------------------------
+
+def test_an_empty_quote_never_verifies():
+    """Folding removes quote marks, so "", '""' and "   " all arrived empty --
+    and hay.find("") returns 0, verifying at ratio 1.0 with a span covering the
+    whole chapter. Two critics omitting the field then agreed, handing `revise`
+    a CONFIRMED defect over an entire reviewed chapter on no evidence."""
+    chapter = "A real chapter of prose. " * 12
+    for empty in ("", '""', "   ", "''"):
+        f = Finding("a", "promise_break", empty, why_it_fails="x.",
+                    reaches_for="y.", works_here="nothing")
+        r = Review("a", "m", promise_breaks=[f], strongest_quote="z",
+                   verdict=Verdict.REVISE)
+        ver, hall = verify_quotes(r, chapter)
+        assert not ver and len(hall) == 1, f"{empty!r} verified"
+        assert f.match_ratio == 0.0
+
+
+def test_a_negated_verdict_is_not_read_as_approval():
+    """Verdict parsing scanned for substrings in enum order with `ship` first,
+    so "do not ship this" and "should not ship, rewrite it" both recorded as
+    SHIP -- revise was skipped and escalation never counted the failure."""
+    cases = {"do not ship this": Verdict.REWRITE,
+             "should not ship, rewrite it": Verdict.REWRITE,
+             "ship": Verdict.SHIP,
+             "rewrite": Verdict.REWRITE,
+             "needs revision": Verdict.REVISE}
+    for raw, want in cases.items():
+        got = parse('{"verdict":"%s"}' % raw, reviewer="a", model="m").verdict
+        assert got == want, f"{raw!r} -> {got}, wanted {want}"
+
+
+def test_recommitting_a_chapter_does_not_revert_the_ledger():
+    """commit.run(deltas=None) wrote empty sections over the chapter's final
+    delta, so a re-run silently reverted every row to the halves' provisional
+    values and later chapters drafted against stale facts."""
+    env = fresh()
+    env.part("01a").parent.mkdir(parents=True, exist_ok=True)
+    for part in ("a", "b"):
+        env.part(f"01{part}").write_text(
+            "\n\n".join(f"paragraph {i} of the half." for i in range(6)))
+    join.run(env, 1)
+    env.chapter(1, 1).write_text(env.joined(1).read_text())
+
+    state.write_delta(env, "01a", {"characters": [{"name": "Yara",
+                                                   "location": "bay nine"}]})
+    commit.run(env, 1, deltas={"characters": [{"name": "Yara",
+                                               "location": "the gallery"}]})
+    before = json.loads(env.state.read_text())["characters"][0]
+    commit.run(env, 1)                       # what the CLI does
+    after = json.loads(env.state.read_text())["characters"][0]
+    assert after["location"] == before["location"] == "the gallery"
+    assert after["provisional"] is False
+
+
+def test_a_stray_file_in_deltas_does_not_break_the_fold():
+    """One backup file raised BadUnit out of rebuild, which broke
+    state_rebuild and chapter_commit for every remaining chapter."""
+    env = fresh()
+    state.write_delta(env, "01a", {"characters": [{"name": "Yara"}]})
+    (env.root / "deltas" / "chars-backup.json").write_text("{}")
+    (env.root / "deltas" / "ch99-notes.json").write_text("{}")
+    s = state.rebuild(env)
+    assert [r["name"] for r in s["characters"]] == ["Yara"]
+
+
+def test_fit_never_strips_a_prompt_to_nothing():
+    """The loop dropped user segments while the total exceeded budget, and the
+    total includes system segments it cannot touch -- so a large enough rules
+    file produced a draft prompt with no beats and no first half."""
+    from storyos.context import build_prose_prompt
+    p = build_prose_prompt(rules="R " * 5000, style_card={}, world_facts={"w": "y"},
+                           character_rows=[{"name": "Y"}],
+                           beats=[{"beat": "something happens"}],
+                           prior_chapters=[], chapter_no=7, part="b",
+                           half_a_text="The gallery ran the length. " * 100,
+                           budget_tokens=1000)
+    assert len(p.user_segments) >= 1
+    survivor = p.user_segments[0]
+    assert survivor.priority == max(s.priority for s in p.user_segments + p.dropped)
+
+
+def test_a_chapter_stage_refuses_a_half_id():
+    """Given 07a a chapter stage did the work but logged (7,"a",stage) where
+    the plan expects (7,"",stage) -- the work stayed invisible and status
+    asked for it forever."""
+    import subprocess
+    env = fresh()
+    r = subprocess.run(["storyos", "--env", str(env.root), "stage", "join", "07a"],
+                       capture_output=True, text=True)
+    assert r.returncode != 0
+    assert "whole chapter" in (r.stdout + r.stderr)
+
+
+def test_a_prose_check_writes_one_canonical_file():
+    """The path used the raw unit string, so 01a, 1a and ch01a each wrote a
+    different file and a consumer looking for the canonical name found none."""
+    from storyos.checks import length
+    env = fresh()
+    env.part("01a").parent.mkdir(parents=True, exist_ok=True)
+    env.part("01a").write_text(" ".join(["word"] * 1500))
+    for spelling in ("01a", "1a", "ch01a"):
+        length.run(env, spelling)
+    written = sorted(p.name for p in (env.root / "checks").glob("*.prose.json"))
+    assert written == ["ch01a.prose.json"], written
+
+
+def test_a_delta_is_written_atomically():
+    """A delta is a model extraction that cannot be regenerated for free, and
+    a torn one breaks the fold for the rest of the book."""
+    env = fresh()
+    state.write_delta(env, "01a", {"characters": [{"name": "Yara"}]})
+    leftovers = list((env.root / "deltas").glob("*.writing"))
+    assert not leftovers, leftovers
+    assert json.loads(env.delta("01a").read_text())["unit"] == "01a"
+
+
+# -- 15. the pipeline as data ---------------------------------------------
 
 def test_every_model_stage_has_a_bench_row():
     """A stage with no bench row printed "?" for its model, which once hid a

@@ -126,8 +126,12 @@ def load_token(env) -> dict | None:
 
 def save_token(env, tok: dict) -> None:
     p = _token_path(env)
-    p.write_text(json.dumps(tok, indent=2) + "\n")
-    os.chmod(p, 0o600)        # owner only; it is a live credential
+    # Opened 0600 rather than written and then chmod'd: between those two
+    # calls the file existed at whatever the umask allowed, and it holds a
+    # live credential.
+    fd = os.open(p, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    with os.fdopen(fd, "w", encoding="utf-8") as fh:
+        fh.write(json.dumps(tok, indent=2) + "\n")
 
 
 def forget(env) -> bool:

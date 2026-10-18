@@ -32,7 +32,16 @@ def run(env, chapter: int | str, *, deltas: dict | None = None) -> dict:
 
     # The chapter's final delta supersedes its two provisional halves, because
     # seam and revise may have changed the prose those halves were read from.
-    write_delta(env, units.fmt(ch), deltas or {}, provisional=False)
+    #
+    # Only written when there is something to write. Passing {} replaced an
+    # existing final delta with empty sections, so a re-run of chapter_commit
+    # silently reverted the ledger to the halves' provisional values -- a
+    # character's location went back to where chapter 1 left it and every later
+    # chapter drafted against the stale row.
+    if deltas:
+        write_delta(env, units.fmt(ch), deltas, provisional=False)
+    elif not env.delta(units.fmt(ch)).is_file():
+        write_delta(env, units.fmt(ch), {}, provisional=False)
     state = rebuild(env)
 
     manuscript = rebuild_manuscript(env)

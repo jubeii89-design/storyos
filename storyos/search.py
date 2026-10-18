@@ -13,6 +13,7 @@ from __future__ import annotations
 import hashlib
 import json
 import re
+import contextlib
 import sqlite3
 from pathlib import Path
 
@@ -60,9 +61,8 @@ def _put(con, path: str, kind: str, unit: str, title: str, body: str) -> bool:
     return True
 
 
-def reindex(env, *, full: bool = False) -> dict:
+def _reindex(con, env, *, full: bool = False) -> dict:
     """Bring the index up to date. Cheap when nothing changed."""
-    con = _db(env)
     if full:
         con.executescript("DELETE FROM ft; DELETE FROM doc;")
 
@@ -136,7 +136,6 @@ def reindex(env, *, full: bool = False) -> dict:
     con.commit()
     total = con.execute("SELECT COUNT(*) FROM doc").fetchone()[0]
     words = con.execute("SELECT COALESCE(SUM(words),0) FROM doc").fetchone()[0]
-    con.close()
     return {"documents": total, "words": words, "updated": changed,
             "removed": len(stale)}
 
@@ -161,7 +160,7 @@ def _as_query(text: str) -> str:
     return " AND ".join(parts)
 
 
-def query(env, text: str, *, kinds: tuple[str, ...] = (), limit: int = 60) -> dict:
+def _query(con, env, text: str, *, kinds: tuple[str, ...] = (), limit: int = 60) -> dict:
     text = (text or "").strip()
     if len(text) < 2:
         return {"query": text, "results": [], "note": "type at least 2 characters"}
@@ -170,7 +169,6 @@ def query(env, text: str, *, kinds: tuple[str, ...] = (), limit: int = 60) -> di
     if not match:
         return {"query": text, "results": [], "note": "nothing searchable in that"}
 
-    con = _db(env)
     sql = ("SELECT path, kind, unit, title, "
            "snippet(ft, 0, '\x02', '\x03', '…', 14) AS snip, bm25(ft) AS rank "
            "FROM ft WHERE ft MATCH ?")
@@ -184,7 +182,6 @@ def query(env, text: str, *, kinds: tuple[str, ...] = (), limit: int = 60) -> di
     try:
         rows = con.execute(sql, args).fetchall()
     except sqlite3.OperationalError as x:
-        con.close()
         return {"query": text, "results": [], "note": f"bad search: {x}"}
 
     out = [{"path": p, "kind": k, "unit": u, "title": t,
@@ -194,7 +191,6 @@ def query(env, text: str, *, kinds: tuple[str, ...] = (), limit: int = 60) -> di
     counts = {}
     for r in out:
         counts[r["kind"]] = counts.get(r["kind"], 0) + 1
-    con.close()
     return {"query": text, "match": match, "results": out,
             "total": len(out), "by_kind": counts}
 
@@ -210,3 +206,18 @@ def stats(env) -> dict:
             "documents": sum(r[1] for r in rows),
             "words": sum(r[2] for r in rows),
             "by_kind": {r[0]: r[1] for r in rows}}
+
+
+def reindex(env, *, full: bool = False) -> dict:
+    """Bring the index up to date, closing the handle on every path.
+
+    reindex walks the whole book, so one malformed review file used to leave
+    the connection open and the index locked for the rest of the session.
+    """
+    with contextlib.closing(_db(env)) as con:
+        return _reindex(con, env, full=full)
+
+
+def query(env, text: str, *, kinds: tuple[str, ...] = (), limit: int = 60) -> dict:
+    with contextlib.closing(_db(env)) as con:
+        return _query(con, env, text, kinds=kinds, limit=limit)

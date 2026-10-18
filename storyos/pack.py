@@ -11,7 +11,6 @@ import json
 
 from . import units
 from .context import build_prose_prompt
-from .style import run as style_run
 
 
 def run(env, unit: str, run_id: str) -> dict:
@@ -28,7 +27,9 @@ def run(env, unit: str, run_id: str) -> dict:
 
     rules = _rules(env, part)
     state = json.loads(env.state.read_text()) if env.state.is_file() else {}
-    style = style_run(env)
+    # Read, never write. style.json belongs to the style_card stage, and
+    # calling its runner here made packing a second writer to that file.
+    style = json.loads(env.style.read_text()) if env.style.is_file() else {}
 
     half_a_text = ""
     prior: list[str] = []

@@ -268,6 +268,16 @@ def verify_quotes(review: Review, chapter_text: str, *, floor: float = 0.90) -> 
 
     for f in review.findings:
         needle = _normalise(f.quote)
+        if not needle:
+            # Folding removes quote marks, so "", '""' and "   " all arrive
+            # here as empty -- and hay.find("") returns 0, which verified the
+            # finding at ratio 1.0 with a span covering the whole chapter.
+            # Two critics omitting the field then agreed, producing a CONFIRMED
+            # defect over an entire reviewed chapter on no evidence at all.
+            f.status = Status.UNVERIFIED
+            f.match_ratio = 0.0
+            hallucinated.append(f)
+            continue
         if needle == "absent":           # a promise_break legitimately quotes nothing
             f.status = Status.CONTESTED
             f.match_ratio = 1.0

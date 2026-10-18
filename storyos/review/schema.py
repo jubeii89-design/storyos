@@ -118,8 +118,19 @@ def parse(raw: str, *, reviewer: str, model: str) -> Review:
     """Text in, `Review` out. Raises only when there is no JSON at all."""
     doc = extract_json(raw)
 
+    # Anchored, not a substring scan in enum order. "do not ship this" and
+    # "should not ship, rewrite it" both matched `ship` because it is checked
+    # first, so a critic demanding a rewrite was recorded as approving the
+    # chapter -- revise was skipped and the escalation counter never moved.
     verdict_raw = str(_pick(doc, "verdict", "revise") or "revise").strip().lower()
-    verdict = next((v for v in Verdict if v.value in verdict_raw), Verdict.REVISE)
+    words = set(re.findall(r"[a-z]+", verdict_raw))
+    negated = bool({"not", "never", "cannot", "dont", "shouldnt"} & words)
+    if "rewrite" in words or (negated and "ship" in words):
+        verdict = Verdict.REWRITE
+    elif "ship" in words and not negated:
+        verdict = Verdict.SHIP
+    else:
+        verdict = Verdict.REVISE
 
     review = Review(
         reviewer=reviewer,

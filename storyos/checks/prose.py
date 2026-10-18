@@ -67,7 +67,8 @@ def run(env, unit: str) -> dict:
         "hits": [{"phrase": h.phrase, "line": h.line, "span": list(h.span),
                   "context": h.context} for h in hits],
     }
-    out = env.root / "checks" / f"ch{unit}.prose.json"
+    from .. import units
+    out = env.root / "checks" / f"ch{units.fmt(*units.parse(unit))}.prose.json"
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(json.dumps(result, indent=2) + "\n")
     return result

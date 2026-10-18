@@ -138,10 +138,11 @@ def _pdf(env, md: str, title: str, author: str) -> Path | None:
     rather than no book.
     """
     body = _md_to_html(md)
-    byline = f'<div class="by">{author}</div>' if author else ""
-    html = (f"<!doctype html><meta charset=utf-8><title>{title}</title>"
+    safe_title, safe_author = _esc(title), _esc(author)
+    byline = f'<div class="by">{safe_author}</div>' if author else ""
+    html = (f"<!doctype html><meta charset=utf-8><title>{safe_title}</title>"
             f"<style>{PAGE_CSS}</style>"
-            f'<div class="title-page"><h2>{title}</h2>{byline}</div>{body}')
+            f'<div class="title-page"><h2>{safe_title}</h2>{byline}</div>{body}')
 
     src = env.export_dir / "manuscript.print.html"
     src.write_text(html)

@@ -24,6 +24,7 @@ halves were read from.
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 
 from . import units
@@ -47,7 +48,13 @@ def rebuild(env, *, write: bool = True) -> dict:
     deltas = sorted((env.root / "deltas").glob("ch*.json"), key=_sort_key)
 
     for path in deltas:
-        chapter, part = units.parse(path.stem.removeprefix("ch"))
+        try:
+            chapter, part = units.parse(path.stem.removeprefix("ch"))
+        except units.BadUnit:
+            # A backup or an editor's stray file in deltas/ used to raise out
+            # of rebuild, which broke state_rebuild and chapter_commit for
+            # every remaining chapter. It is not a delta; skip it.
+            continue
         # Every delta is applied, halves before the chapter's final one. An
         # earlier version skipped a chapter's halves once its final delta
         # existed, which silently deleted any character the final delta did
@@ -96,7 +103,14 @@ def write_delta(env, unit: str, rows: dict, *, provisional: bool | None = None) 
 
     path = env.delta(unit)
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(payload, indent=2) + "\n")
+    # Written through a temporary file and renamed. A delta is a model
+    # extraction -- it cannot be regenerated without paying for the call
+    # again -- and a truncate-then-write interrupted midway leaves JSON that
+    # rebuild cannot parse, which breaks the fold for the rest of the book.
+    # os.replace is atomic on the same filesystem.
+    tmp = path.with_suffix(".json.writing")
+    tmp.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
+    os.replace(tmp, path)
     return path
 
 
