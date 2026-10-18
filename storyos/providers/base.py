@@ -6,7 +6,7 @@ Completion. Swapping Opus for GLM-5.2 or a local Ollama model is a config
 edit, not a code edit.
 
 Every call returns usage and a cost estimate, because a 40-chapter run makes
-a hundred calls and you should be able to see where the money went.
+a long run of calls and you should be able to see where the money went.
 """
 
 from __future__ import annotations

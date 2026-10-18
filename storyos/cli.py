@@ -6,7 +6,7 @@ that is the question asked most often and the one a progress bar cannot answer.
 
 A stage that needs a model is refused here. The Claude Code skill drives those
 -- it is where the subscription's model access lives -- and a Python command
-that silently did nothing for eleven of the twenty-four stages would be a trap.
+that silently did nothing for the free stages would be a trap.
 So those print the skill invocation to use instead, and exit nonzero.
 """
 
@@ -106,11 +106,16 @@ def cmd_status(args) -> int:
         print(f"        {c(str(env.premise), BOLD)}")
     elif st.model:
         esc = review_failures(env.root, chapter) if chapter else 0
+        # Read the threshold rather than assume it. This was hard-coded to 2
+        # here while models.json carried escalate_after_failures, so a writer
+        # who changed it saw the old number in status and the new one applied.
+        after = (env.models().get("stages", {}).get(stage, {})
+                 .get("escalate_after_failures", 2))
         model = _model_for(env, stage, esc)
         print(f"        needs a model ({model}) — run it through the skill:")
         print(f"        {c(f'/storyos {stage} ' + (units.fmt(chapter, part) if chapter else ''), BOLD)}")
-        if esc >= 2:
-            print(f"        {c(f'escalated: {esc} rewrite verdicts on this chapter', AMBER)}")
+        if after and esc >= after:
+            print(f"        {c(f'escalated: {esc} rewrite verdict(s), threshold {after}', AMBER)}")
     else:
         arg = units.fmt(chapter, part) if chapter else ""
         print(f"        free — Python answers this one:")
@@ -252,7 +257,10 @@ def _length(env, unit):
     from .checks.length import run
     r = run(env, unit)
     lines = [f"{r['words']:,} words — {r['verdict']}"]
-    if not r["ok"]:
+    for h in r.get("banned_phrases", []):
+        lines.append(c(f"  line {h['line']}: \u201c{h['phrase']}\u201d", RED))
+        lines.append(f"    …{h['context'][:70]}…")
+    if not r["ok"] and "banned" not in r["verdict"]:
         lines.append(f"outside the hard band {r['hard'][0]:,}-{r['hard'][1]:,}; redraft")
     return lines, r["ok"]
 

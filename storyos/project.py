@@ -74,9 +74,10 @@ sees a question Python already answered.
 
 ## Scene, not summary
 
-Dramatise the beats. Do not report them. If three consecutive sentences pass
+Dramatise the beats. Do not report them. When several sentences run together
 with no concrete sensory particular, no physical action and no line of
-dialogue, the prose has drifted into summary and must be rewritten as scene.
+dialogue, the prose has drifted into summary and should be rewritten as scene.
+No check measures this -- it is a judgement, and it is yours.
 
 Summary: *They argued about the manifest for an hour.*
 Scene: *"Read me the line," she said. "The line itself." He did not pick up the tablet.*
@@ -104,11 +105,11 @@ distribution, not the mean -- uniform sentence length reads as machinery.
 
 ## Never write these
 
-They mark generated prose more reliably than anything else, and the free check
-rejects the draft when it finds them:
+`storyos/checks/prose.py` rejects a draft that contains any of them, so this
+list is enforced rather than advised:
 
 - *a testament to*, *a mix of*, *a symphony of*, *a tapestry of*
-- *her heart hammered / pounded / raced*, *a shiver ran down*
+- *her heart hammered / pounded / raced*, *a shiver ran down*, *shivers down*
 - *little did she know*, *unbeknownst to*
 - *the air was thick with*, *the silence was deafening*
 - *she couldn't help but*, *a wave of \\<emotion\\> washed over*
@@ -171,8 +172,8 @@ as though your first word follows its last word, because it does.
 
 The reader has been in this room for 1,700 words. Naming the room again, or its
 smell, or the weather outside it, restarts a scene that is already running.
-This is the single most common defect at the join and the seam check measures
-it by comparing your opening sentences to the first half's.
+The seam check measures this by comparing your opening sentences to the first
+half's, and by counting how many of the things it named you name again.
 
 Wrong: *The greenhouse gallery smelled of coolant and damp soil.* (the first half opened this way)
 Right: *"No," he said. "It isn't."*
@@ -191,7 +192,7 @@ vocabulary; the check flags a shared distinctive gesture across the join.
 ## Do not summarise what just happened
 
 It happened on the page, immediately before. A character reflecting on the
-previous 1,700 words is the second most common defect here.
+previous 1,700 words restates for the reader what the reader just read.
 
 ## Resolve the chapter, not the book
 

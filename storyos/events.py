@@ -16,7 +16,6 @@ buys most of the resumability story:
 
 Writes are line-atomic: one `write()` of one line, then flush. Concurrent
 appends from a parent and a child process interleave safely at line
-granularity on POSIX for lines under PIPE_BUF, and a truncated final line from
 a hard kill is tolerated by the reader rather than fatal.
 """
 

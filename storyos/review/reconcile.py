@@ -7,7 +7,8 @@ that. It constrains the shape of the answer instead:
 
 - A fixed quota of negatives. Exactly three weakest paragraphs, every time.
   There is no way to be agreeable when the task requires naming a worst.
-- No rating scale. Scores collapse to 7/10 and drift upward with length.
+- No rating scale, which removes the option of answering with a number that
+  commits to nothing.
 - Every claim carries a verbatim quote, which `verify_quotes` string-matches
   against the chapter. A finding whose quote does not literally appear is
   dropped and recorded as hallucinated evidence. This is the load-bearing
@@ -56,8 +57,8 @@ _REMAPPED = {"–": "-", "—": "-", "…": "..."}
 def _fold(text: str) -> tuple[str, list[int]]:
     """Normalise, and return the map from each folded offset to its origin.
 
-    Models routinely restyle quotation marks, dashes and whitespace while
-    quoting accurately. Penalising that would throw away real findings, so both
+    A model can restyle quotation marks, dashes and whitespace while quoting
+    accurately. Penalising that would throw away real findings, so both
     sides are folded before comparing -- but the words themselves are untouched,
     because word-level invention is exactly what we are hunting.
 
@@ -363,9 +364,9 @@ def reconcile(review_a: Review, review_b: Review, chapter_text: str) -> Reconcil
 
 
 def shuffled_paragraphs(chapter_text: str, seed: int) -> tuple[str, list[int]]:
-    """Present paragraphs out of order to one reviewer, to defeat position bias.
+    """Present paragraphs out of order to one reviewer, against position bias.
 
-    LLM judges weight what they read first. Reviewer B sees the same prose in a
+    Order effects are a known hazard in LLM-as-judge setups. Reviewer B sees the same prose in a
     different order, so any agreement between the two survived that reordering.
     Returns the shuffled text and the mapping back to true indices.
     """

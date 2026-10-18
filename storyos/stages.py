@@ -1,4 +1,4 @@
-"""The pipeline as data: 24 stages, their scope, and whether a model is needed.
+"""The pipeline as data: every stage, its scope, and whether a model is needed.
 
 This is the machine-readable twin of `reference/stages.md`. The prose document
 explains why each stage exists; this one is what `status` replays against and

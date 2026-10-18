@@ -575,9 +575,9 @@ def _suggestions(reports: list[dict], redrafts: dict) -> list[dict]:
         out.append({
             "kind": "redrafts",
             "text": f"{total_redrafts} redrafts across {len(redrafts)} halves. "
-                    f"Above about 0.5 per half the beats are usually doing too "
-                    f"little -- a half with three vague beats is redrafted more "
-                    f"than one with five specific ones.",
+                    f"Worth looking at what the beats for those halves asked "
+                    f"for: a redraft is often a half that was given too little "
+                    f"to dramatise.",
         })
 
     if not out:

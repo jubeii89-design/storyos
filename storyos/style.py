@@ -3,13 +3,14 @@
 A style card written as adjectives -- "lyrical but spare", "muscular", "wry" --
 constrains nothing, because every model already believes it writes that way.
 A card written as numbers can be matched and, more importantly, can be checked
-afterwards: `checks/style_drift.py` reads the same fields back off a draft.
+afterwards, by measuring a draft with the same function and comparing.
 
 What is measured here was chosen because it varies between authors and survives
 translation into an instruction. Sentence-length *distribution* rather than its
 mean, because two authors with identical means read nothing alike if one varies
-and the other does not -- and uniform sentence length is the single most
-reliable tell of generated prose. Conjunction openings, em-dash rate and
+and the other does not. Uniform sentence rhythm is a conspicuous property of
+unedited generated prose, which is the reason the variance is carried here and
+not only the average. Conjunction openings, em-dash rate and
 semicolon rate because they are habits a writer barely notices and a model will
 not reproduce unless told. Dialogue share because it sets the page's texture
 before a single word is read.
@@ -110,10 +111,10 @@ def measure(text: str) -> dict:
         "paragraph": {
             "mean_sentences": round(statistics.fmean(para_sents), 2) if para_sents else 0.0,
             "mean_words": round(statistics.fmean(para_words), 2) if para_words else 0.0,
-            # Only meaningful beside mean_words. Tested against two opposite
-            # samples, terse prose scored 57% here and periodic prose 71% --
-            # because the periodic paragraphs ARE single 90-word sentences.
-            # Alone this field says nothing; paired with mean_words it
+            # Only meaningful beside mean_words. On two samples with opposite
+            # habits the terse one scored LOWER here than the periodic one,
+            # because the periodic paragraphs are themselves single very long
+            # sentences. Alone the field says nothing; with mean_words it
             # separates "short punchy paragraph" from "one long sentence".
             "pct_single_sentence": _pct(sum(1 for n in para_sents if n == 1),
                                         len(para_sents)),

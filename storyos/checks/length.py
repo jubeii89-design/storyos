@@ -29,8 +29,17 @@ def run(env, unit: str) -> dict:
     else:
         verdict, ok = "outside target, inside tolerance", True
 
+    # The blocklist the rules promise is enforced. A draft inside the word
+    # band but carrying banned phrasing has not passed the gate.
+    from .prose import run as prose_check
+    prose = prose_check(env, unit)
+    if not prose["ok"]:
+        ok = False
+        verdict = f"{verdict}, {prose['banned_phrases']} banned phrase(s)"
+
     result = {"unit": unit, "words": words, "target": list(TARGET),
-              "hard": list(HARD), "verdict": verdict, "ok": ok}
+              "hard": list(HARD), "verdict": verdict, "ok": ok,
+              "banned_phrases": prose["hits"]}
     env.words_check(unit).parent.mkdir(parents=True, exist_ok=True)
     env.words_check(unit).write_text(json.dumps(result, indent=2) + "\n")
     return result

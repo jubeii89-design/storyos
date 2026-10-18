@@ -657,6 +657,52 @@ def test_the_style_segment_tracks_the_data_not_a_flag():
         'she said. "I logged a mass."'))
 
 
+def test_the_blocklist_the_rules_promise_is_actually_enforced():
+    """rules_common.md told the model the list was rejected on sight. That was
+    false: the phrases lived in the prompt and nothing read the draft
+    afterwards. A rule asserted and never enforced teaches a model to treat
+    the rest of the rules as advisory."""
+    from storyos.checks import length
+    from storyos.checks.prose import BANNED, find
+
+    env = fresh()
+    env.part("01a").parent.mkdir(parents=True, exist_ok=True)
+    clean = " ".join(["word"] * 1500)
+    env.part("01a").write_text(clean)
+    assert length.run(env, "01a")["ok"], "clean prose in band must pass"
+
+    env.part("01a").write_text(clean + " Her heart hammered against her ribs.")
+    r = length.run(env, "01a")
+    assert not r["ok"], "a banned phrase must fail the gate"
+    assert r["banned_phrases"] and r["banned_phrases"][0]["phrase"] == "heart hammered"
+    assert find("the air was thick with smoke")
+
+
+def test_every_enforced_phrase_is_one_the_model_was_shown():
+    """Penalising a draft for a phrase the rules never listed is a trap."""
+    import re
+    from storyos.checks.prose import BANNED
+    rules = (Path(__file__).resolve().parent.parent
+             / "storyos" / "project.py").read_text()
+    section = rules[rules.index("## Never write these"):rules.index("## Length")]
+    listed = " ".join(re.findall(r"\*([^*]+)\*", section)).lower()
+    unstated = [p for p in BANNED if p.split()[0] not in listed]
+    assert not unstated, f"enforced but never shown to the model: {unstated}"
+
+
+def test_status_reads_the_configured_escalation_threshold():
+    """It was hard-coded to 2 while models.json carried the setting, so a
+    writer who changed it saw one number and got another."""
+    env = fresh()
+    for threshold in (1, 3):
+        m = json.loads(env.models_path.read_text())
+        m["stages"]["draft"]["escalate_after_failures"] = threshold
+        env.models_path.write_text(json.dumps(m, indent=2))
+        got = (Env.find(env.root).models()["stages"]["draft"]
+               ["escalate_after_failures"])
+        assert got == threshold
+
+
 # -- 14. the pipeline as data ---------------------------------------------
 
 def test_every_model_stage_has_a_bench_row():
