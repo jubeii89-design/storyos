@@ -18,6 +18,17 @@ MIN_CONTENT_WORDS = 2      # per n-gram, before it counts as repeated phrasing
 SETTING_FLOOR = 0.55
 MIN_SETTING_WORDS = 6      # below this, two sentences are similar by accident
 NEAR_IDENTICAL = 0.93      # so a short line must be all but repeated verbatim
+MIN_SHARED_REFS = 3        # too few and any two passages share something
+
+# PROVISIONAL, and labelled so rather than left to look settled. Measured on
+# five hand-written cases: the two real restatements scored 0.33 and 1.00, the
+# three non-defects all scored 0.00. The gap is wide and the threshold sits in
+# it -- but the cases are mine, which is the circularity this detector was
+# rewritten to escape. It stays a warning, never an error, until
+# `storyos seam calibrate` has re-derived it from the writer's own prose:
+# sample passage pairs drawn far apart in comps/, which are non-defects by
+# construction, and take a high quantile of their reuse ratio.
+REUSE_RATIO = 0.20
 
 
 @dataclass(frozen=True)
@@ -82,6 +93,23 @@ def _is_content(word: str) -> bool:
 
 def _sentences(text: str) -> list[str]:
     return [s.strip() for s in SENT_RE.split(text.strip()) if s.strip()]
+
+
+def _references(text: str) -> set[str]:
+    """The concrete things a passage names.
+
+    Content words long enough to be specific, minus the gesture and body
+    vocabulary, which recurs in all prose and says nothing about setting.
+    This is a bag of tokens, not meaning: a half that renames the gulls as
+    birds defeats it, and that case is left to the `seam` stage, which reads
+    both halves and can see a synonym.
+    """
+    out = set()
+    for w, _, _ in _tokens(text):
+        s = _strip(w)
+        if len(s) >= 5 and s not in STOPWORDS and s not in GESTURES:
+            out.add(s)
+    return out
 
 
 def _strip(word: str) -> str:
@@ -155,14 +183,46 @@ def check_seam(half_a: str, half_b: str, *, window_words: int = 300) -> list[Fin
         short = min(len(bs.split()), len(best[1].split())) < MIN_SETTING_WORDS
         floor = NEAR_IDENTICAL if short else SETTING_FLOOR
         if best[0] >= floor:
-            at = half_a.find(best[1])
+            # rfind would be as arbitrary as find; locate the match nearest
+            # the join, which is the occurrence a reader would be comparing.
+            at = half_a.rfind(best[1])
             bt = half_b.find(bs)
             findings.append(Finding(
-                "restated_setting", "error",
+                "restated_setting", "warn",
                 f"opening re-establishes the first half's opening ({best[0]:.0%})",
                 bs[:80], (at, at + len(best[1])) if at >= 0 else None,
                 (bt, bt + len(bs)) if bt >= 0 else None,
             ))
+
+    # 2b. The second half re-introducing places and things the first half
+    # already established.
+    #
+    # The ratio check above compares character sequences, so it only sees
+    # near-verbatim restatement -- which repeat_ngram already catches. Measured
+    # on three cases it contributed no unique detection at all. The defect it
+    # was meant to find is informational: half B tells the reader again, in its
+    # own words, what half A already said.
+    #
+    # Shared concrete references survive paraphrase where phrasing does not: a
+    # writer renaming the gulls as birds will still call the dock a dock. So
+    # this counts the specific things B's opening names that A's opening
+    # already named, and fires only when B introduces almost nothing of its own
+    # -- a half that re-treads old ground rather than one that mentions it in
+    # passing.
+    a_refs = _references(" ".join(_sentences(half_a)[:5]))
+    b_refs = _references(" ".join(_sentences(half_b)[:3]))
+    if a_refs and b_refs:
+        shared = a_refs & b_refs
+        reuse = len(shared) / len(a_refs)
+        if len(shared) >= MIN_SHARED_REFS and reuse >= REUSE_RATIO:
+            at = half_a.rfind(_sentences(half_a)[0])
+            findings.append(Finding(
+                "restated_references", "warn",
+                f"the second half re-names {len(shared)} of the {len(a_refs)} "
+                f"things the first half established ({reuse:.0%} of them)",
+                ", ".join(sorted(shared)[:6]),
+                (at, at + len(_sentences(half_a)[0])) if at >= 0 else None,
+                (0, len(_sentences(half_b)[0]))))
 
     # 3. The same distinctive gesture on both sides of the join.
     b_gest = {w: (s, e) for w, s, e in b_win if _strip(w) in GESTURES}
