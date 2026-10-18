@@ -116,7 +116,17 @@ def run(env, *, formats: tuple[str, ...] = ("docx", "epub", "pdf")) -> dict:
             out[fmt] = str(path)
 
     staged.unlink(missing_ok=True)
-    return {"chapters": stats["chapters"], "words": stats["words"], "files": out}
+
+    # Strip what the writer did not choose to say: renderer names, build
+    # timestamps, the per-export identifiers. Title and author stay, because
+    # those were chosen.
+    from . import scrub
+    cleaned = {}
+    for fmt, path in out.items():
+        cleaned[fmt] = scrub.clean(Path(path), title=title, author=author)
+
+    return {"chapters": stats["chapters"], "words": stats["words"],
+            "files": out, "scrubbed": cleaned}
 
 
 def _pdf(env, md: str, title: str, author: str) -> Path | None:

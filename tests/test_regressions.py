@@ -547,7 +547,79 @@ def test_a_snapshot_still_renders_without_a_browser():
     assert ok and out.stat().st_size > 0
 
 
-# -- 12. the pipeline as data ---------------------------------------------
+# -- 12. exported metadata ------------------------------------------------
+
+def test_exports_disclose_nothing_the_writer_did_not_choose():
+    """A PDF announced WeasyPrint, a DOCX claimed to be Microsoft Word 12 and
+    recorded the minute of the build, an EPUB stamped a timestamp and a fresh
+    UUID. None of that is in the book, and a manuscript going to an agent
+    should not volunteer the hour you finished it."""
+    import re
+    try:
+        import weasyprint                      # noqa: F401
+    except ImportError:
+        return
+    from storyos import export, scrub
+
+    env = fresh()
+    env.marker.write_text(json.dumps({**env.config, "author": "A Writer"}))
+    env = Env.find(env.root)
+    (env.root / "chapters").mkdir(parents=True, exist_ok=True)
+    for ch in (1, 2):
+        env.chapter(ch).write_text("\n\n".join(
+            "The gallery ran the length of the spine." for _ in range(12)))
+    export.run(env)
+
+    tell = re.compile(r"20\d\d-\d\d-\d\d|weasy|skia|chromium|microsoft|normal\.dotm",
+                      re.I)
+    for name in ("manuscript.pdf", "manuscript.docx", "manuscript.epub"):
+        meta = scrub.report(env.export_dir / name)["metadata"]
+        leaks = {k: v for k, v in meta.items() if tell.search(str(v))}
+        assert not leaks, f"{name} still discloses {leaks}"
+        joined = " ".join(meta.values())
+        assert "A Writer" in joined, f"{name} lost the author the writer chose"
+
+
+def test_the_epub_identifier_is_stable_and_internally_consistent():
+    """pandoc writes a random UUID into both the package and the NCX. Once the
+    package identifier is made stable the two disagree, which is a conformance
+    error and not merely a reproducibility one."""
+    import re
+    import zipfile
+    try:
+        import pypandoc                        # noqa: F401
+    except ImportError:
+        return
+    from storyos import export
+
+    env = fresh()
+    (env.root / "chapters").mkdir(parents=True, exist_ok=True)
+    env.chapter(1).write_text("Body text for the chapter.")
+    export.run(env, formats=("epub",))
+
+    z = zipfile.ZipFile(env.export_dir / "manuscript.epub")
+    opf = next(n for n in z.namelist() if n.endswith(".opf"))
+    ident = re.search(r"<dc:identifier[^>]*>([^<]*)", z.read(opf).decode()).group(1)
+    assert ident.startswith("urn:storyos:")
+    ncx = [n for n in z.namelist() if n.endswith(".ncx")]
+    if ncx:
+        uid = re.search(r'dtb:uid"\s+content="([^"]*)',
+                        z.read(ncx[0]).decode()).group(1)
+        assert uid == ident, "the NCX uid must match the package identifier"
+
+
+def test_a_library_note_does_not_record_an_absolute_path():
+    """source_id held the full import path, which names the machine and the
+    account to anyone the note reaches."""
+    env = fresh()
+    p = library.add(env, "# A\n\nBody.", title="A", source="md",
+                    source_id="craft.pdf")
+    raw = p.read_text()
+    assert "source_id" in raw
+    assert "/home/" not in raw and "/Users/" not in raw
+
+
+# -- 13. the pipeline as data ---------------------------------------------
 
 def test_every_model_stage_has_a_bench_row():
     """A stage with no bench row printed "?" for its model, which once hid a

@@ -335,6 +335,13 @@ def _export(env):
     lines = [f"{r['chapters']} chapter(s), {r['words']:,} words"]
     for fmt, path in r["files"].items():
         lines.append(f"{fmt:5} {path}")
+    gone = sorted({k for s in r.get("scrubbed", {}).values()
+                   for k in s.get("removed", [])})
+    lines.append("")
+    lines.append("metadata cleaned: no renderer name, no build timestamp, "
+                 "no per-export id")
+    if gone:
+        lines.append(f"  removed from the PDF: {', '.join(gone)}")
     missing = {"docx","epub","pdf"} - set(r["files"])
     if missing:
         lines.append(c(f"not produced: {', '.join(sorted(missing))}", AMBER))
@@ -615,6 +622,8 @@ def cmd_library(args) -> int:
             ext = raw.suffix.lower()
             if ext in (".pdf", ".docx"):
                 original = library.keep_original(env, title, raw.read_bytes(), ext)
+            # Record the file's name, not where it happened to sit. An absolute
+            # path names the machine and the account to anyone the note reaches.
             elif ext in (".html", ".htm"):
                 # Render it, so an imported page is kept the way it looked
                 # rather than as a file that needs a browser and its assets.
@@ -626,7 +635,7 @@ def cmd_library(args) -> int:
                         original = library.keep_original(env, title,
                                                          out.read_bytes(), ".pdf")
             path = library.add(env, md, title=title, source=fmt,
-                               source_id=str(raw.resolve()), fmt=fmt,
+                               source_id=raw.name, fmt=fmt,
                                original=original)
     except google.NotConnected as x:
         print(c("Google says no", AMBER)); print(f"  {x}")
